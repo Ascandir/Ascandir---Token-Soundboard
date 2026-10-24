@@ -2,7 +2,7 @@
   "id": "ascandir-token-soundboard",
   "title": "Ascandir - Token Soundboard",
   "description": "Hängt Sounds an Token. Der Spielleiter legt Sounds an und kann sie für die Besitzer des Tokens freigeben. Abgespielte Sounds sind nur in der Nähe des Tokens zu hören (Flüstern bis sehr laut) und werden mit Entfernung leiser. Dauer und Wiederholung sind einstellbar.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "authors": [
     {
       "name": "Ascandir"
@@ -32,6 +32,6 @@
   ],
   "url": "https://github.com/Ascandir/Ascandir---Token-Soundboard",
   "manifest": "https://github.com/Ascandir/Ascandir---Token-Soundboard/releases/latest/download/module.json",
-  "download": "https://github.com/Ascandir/Ascandir---Token-Soundboard/releases/download/v0.1.0/module.zip",
+  "download": "https://github.com/Ascandir/Ascandir---Token-Soundboard/releases/download/v0.1.1/module.zip",
   "bugs": "https://github.com/Ascandir/Ascandir---Token-Soundboard/issues"
 }

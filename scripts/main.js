@@ -126,6 +126,18 @@ async function probeLength(src) {
 /*  Abspielen & Stoppen (schreibt die Daten)    */
 /* -------------------------------------------- */
 
+/**
+ * Wann endet ein Sound? null = läuft, bis jemand ihn stoppt.
+ * Ohne Loop endet er am Ende des gerade laufenden Durchgangs; eine gewählte Dauer begrenzt zusätzlich.
+ */
+function computeEnds(start, entry, length) {
+  const elapsed = Math.max(0, (now() - start) / 1000);
+  const ends = [];
+  if (!entry.loop && length) ends.push(start + Math.max(1, Math.ceil(elapsed / length)) * length * 1000);
+  if (entry.duration > 0) ends.push(start + entry.duration * 1000);
+  return ends.length ? Math.min(...ends) : null;
+}
+
 async function playSound(tokenDoc, soundId) {
   const entry = getLibrary(tokenDoc).find((s) => s.id === soundId);
   if (!entry || !entry.src) return;
@@ -144,11 +156,6 @@ async function playSound(tokenDoc, soundId) {
     }
   }
 
-  // Wie lange läuft der Sound? null = bis jemand ihn stoppt.
-  let seconds = null;
-  if (entry.duration > 0) seconds = !entry.loop && length ? Math.min(entry.duration, length) : entry.duration;
-  else if (!entry.loop) seconds = length || null;
-
   const start = now();
   const play = {
     id: foundry.utils.randomID(),
@@ -158,7 +165,7 @@ async function playSound(tokenDoc, soundId) {
     level: entry.level,
     loop: entry.loop,
     start,
-    ends: seconds ? start + seconds * 1000 : null,
+    ends: computeEnds(start, entry, length),
     user: game.user.id
   };
 
@@ -195,13 +202,23 @@ async function updateEntry(tokenDoc, soundId, patch) {
   const lib = getLibrary(tokenDoc).map((s) => (s.id === soundId ? normalizeEntry({ ...s, ...patch }) : s));
   await setLibrary(tokenDoc, lib);
 
-  // Lautstärke gilt sofort, auch für einen bereits laufenden Sound.
-  if ("level" in patch) {
-    const list = getPlaying(tokenDoc);
-    if (list.some((p) => p.soundId === soundId)) {
-      await setPlaying(tokenDoc, list.map((p) => (p.soundId === soundId ? { ...p, level: patch.level } : p)));
+  // Lautstärke, Loop und Dauer gelten sofort, auch für einen bereits laufenden Sound.
+  const live = ["level", "loop", "duration"].filter((k) => k in patch);
+  const list = getPlaying(tokenDoc);
+  if (!live.length || !list.some((p) => p.soundId === soundId)) return;
+
+  const entry = lib.find((s) => s.id === soundId);
+  const length = "loop" in patch || "duration" in patch ? await probeLength(entry.src) : 0;
+  const updated = list.map((p) => {
+    if (p.soundId !== soundId) return p;
+    const next = { ...p, level: entry.level };
+    if ("loop" in patch || "duration" in patch) {
+      next.loop = entry.loop;
+      next.ends = computeEnds(p.start, entry, length);
     }
-  }
+    return next;
+  });
+  await setPlaying(tokenDoc, updated);
 }
 
 async function addEntries(tokenDoc, entries) {
@@ -245,14 +262,56 @@ const Engine = {
     }
     for (const [key, w] of wanted) {
       const rec = this.active.get(key);
-      if (rec) rec.play = w.play;
-      else this.start(key, w.play, w.tokenId);
+      if (!rec) {
+        this.start(key, w.play, w.tokenId);
+        continue;
+      }
+      const loopChanged = !!rec.play.loop !== !!w.play.loop;
+      const endsChanged = (rec.play.ends ?? null) !== (w.play.ends ?? null);
+      rec.play = w.play;
+      if (loopChanged) this.restart(key);
+      else if (endsChanged) this.armTimer(key, rec);
     }
     this.scheduleVolume();
   },
 
+  /** Startet einen Sound an der passenden Stelle neu (kurzes Überblenden). */
+  restart(key) {
+    const rec = this.active.get(key);
+    if (!rec) return;
+    this.stop(key);
+    this.start(key, rec.play, rec.tokenId);
+  },
+
+  armTimer(key, rec) {
+    clearTimeout(rec.timer);
+    rec.timer = null;
+    if (!rec.play.ends) return;
+    rec.timer = setTimeout(() => {
+      if (this.active.get(key) === rec) this.finish(key);
+    }, Math.max(0, rec.play.ends - now()));
+  },
+
+  /**
+   * Sicherheitsnetz: Hat der Browser einen Sound beendet, der eigentlich noch
+   * laufen soll (z. B. Loop bei langen, gestreamten Dateien), wird er neu gestartet.
+   */
+  watchdog() {
+    if (game.audio.locked) return;
+    for (const [key, rec] of [...this.active]) {
+      if (rec.dead || !rec.started || rec.sound?.playing) continue;
+      const play = rec.play;
+      if (play.ends && now() >= play.ends) this.finish(key);
+      else if (!play.loop && !play.ends) this.finish(key);
+      else {
+        console.log(`${ID} | Sound war unerwartet beendet, starte neu:`, play.name);
+        this.restart(key);
+      }
+    }
+  },
+
   async start(key, play, tokenId) {
-    const rec = { play, tokenId, sound: null, current: 0, dead: false, timer: null };
+    const rec = { play, tokenId, sound: null, current: 0, dead: false, started: false, timer: null };
     this.active.set(key, rec);
     try {
       if (game.audio.locked) await (game.audio.unlock ?? game.audio.awaitFirstGesture?.());
@@ -266,23 +325,25 @@ const Engine = {
       const length = Number(sound.duration) || 0;
       const elapsed = Math.max(0, (now() - play.start) / 1000);
       if (play.ends && now() >= play.ends) return this.finish(key);
-      if (!play.loop && length && elapsed >= length) return this.finish(key);
+      if (!play.loop && !play.ends && length && elapsed >= length) return this.finish(key);
 
-      const offset = length ? (play.loop ? elapsed % length : elapsed) : 0;
+      const offset = length ? elapsed % length : 0;
       await sound.play({ loop: !!play.loop, offset, volume: 0 });
       if (rec.dead) {
         sound.stop();
         return;
       }
+      rec.started = true;
 
       rec.current = this.targetVolume(rec);
       sound.fade(rec.current, { duration: FADE_MS });
 
-      if (play.ends) {
-        rec.timer = setTimeout(() => this.finish(key), Math.max(0, play.ends - now()));
-      }
-      if (!play.loop && typeof sound.addEventListener === "function") {
-        sound.addEventListener("end", () => this.finish(key), { once: true });
+      this.armTimer(key, rec);
+      if (typeof sound.addEventListener === "function") {
+        sound.addEventListener("end", () => {
+          if (this.active.get(key) !== rec || rec.play.loop) return;
+          this.finish(key);
+        }, { once: true });
       }
     } catch (err) {
       console.error(`${ID} | Sound konnte nicht abgespielt werden`, play.src, err);
@@ -785,6 +846,7 @@ Hooks.once("init", () => {
 
 Hooks.once("ready", () => {
   setInterval(janitor, 10000);
+  setInterval(() => Engine.watchdog(), 3000);
   const mod = game.modules.get(ID);
   if (mod) {
     mod.api = {

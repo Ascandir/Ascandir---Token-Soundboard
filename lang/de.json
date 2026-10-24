@@ -30,7 +30,7 @@
       "StopAll": "Alle stoppen",
       "Name": "Name",
       "Playing": "Läuft",
-      "LoopNextHint": "Änderungen an Dauer und Wiederholung gelten beim nächsten Abspielen."
+      "LoopNextHint": "Lautstärke, Dauer und Wiederholung kannst du auch ändern, während der Sound läuft."
     },
     "Durations": {
       "0": "Ohne Limit",

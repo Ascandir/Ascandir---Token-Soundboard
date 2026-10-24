@@ -30,7 +30,7 @@
       "StopAll": "Stop all",
       "Name": "Name",
       "Playing": "Playing",
-      "LoopNextHint": "Changes to duration and loop apply the next time the sound is played."
+      "LoopNextHint": "Volume, duration and loop can also be changed while the sound is playing."
     },
     "Durations": {
       "0": "No limit",
