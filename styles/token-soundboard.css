@@ -1,0 +1,253 @@
+/* Ascandir - Token Soundboard */
+
+.ats-soundboard {
+  --ats-accent: #c9a24a;
+  --ats-accent-strong: #e0b955;
+  --ats-playing: #5fae6e;
+  --ats-danger: #c0503f;
+  --ats-line: rgba(127, 127, 127, 0.35);
+  --ats-soft: rgba(127, 127, 127, 0.12);
+}
+
+.ats-soundboard .window-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  max-height: 80vh;
+  overflow: hidden;
+  transition: outline-color 0.15s;
+  outline: 2px dashed transparent;
+  outline-offset: -4px;
+}
+
+.ats-soundboard.ats-drag .window-content {
+  outline-color: var(--ats-accent);
+}
+
+.ats-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ats-head img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border: none;
+  flex: 0 0 auto;
+}
+
+.ats-head p {
+  margin: 0;
+  font-size: 0.85em;
+  opacity: 0.8;
+  line-height: 1.35;
+}
+
+.ats-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 2px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.ats-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px;
+  border: 1px solid var(--ats-line);
+  border-radius: 6px;
+  background: var(--ats-soft);
+}
+
+.ats-row.playing {
+  border-color: var(--ats-playing);
+  box-shadow: inset 3px 0 0 var(--ats-playing);
+}
+
+.ats-play {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.05em;
+  margin: 0;
+  padding: 0;
+}
+
+.ats-row.playing .ats-play {
+  background: var(--ats-playing);
+  color: #fff;
+  border-color: var(--ats-playing);
+}
+
+.ats-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ats-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.ats-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+input.ats-name {
+  height: 28px;
+}
+
+.ats-badge {
+  flex: 0 0 auto;
+  font-size: 0.75em;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--ats-playing);
+  color: #fff;
+  white-space: nowrap;
+}
+
+.ats-gm-tools {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.ats-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  place-items: center;
+}
+
+.ats-icon.active {
+  color: var(--ats-accent-strong);
+  border-color: var(--ats-accent);
+}
+
+.ats-icon.ats-danger:hover {
+  color: var(--ats-danger);
+  border-color: var(--ats-danger);
+}
+
+.ats-levels {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  border: 1px solid var(--ats-line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ats-level {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--ats-line);
+  padding: 4px 2px;
+  font-size: 0.8em;
+  line-height: 1.2;
+  min-height: 26px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: transparent;
+}
+
+.ats-level:last-child {
+  border-right: none;
+}
+
+.ats-level.active {
+  background: var(--ats-accent);
+  color: #1b1408;
+  font-weight: bold;
+}
+
+.ats-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ats-loop {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+  padding: 2px 10px;
+  font-size: 0.85em;
+  height: 28px;
+  white-space: nowrap;
+}
+
+.ats-loop.active {
+  background: var(--ats-accent);
+  color: #1b1408;
+  border-color: var(--ats-accent);
+  font-weight: bold;
+}
+
+.ats-duration {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+.ats-duration select {
+  flex: 1 1 auto;
+  min-width: 100px;
+  height: 28px;
+}
+
+.ats-empty {
+  text-align: center;
+  opacity: 0.7;
+  padding: 16px 8px;
+  margin: 0;
+}
+
+.ats-footer {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.ats-footer button {
+  flex: 1 1 0;
+  margin: 0;
+}
+
+/* HUD-Button: leuchtet, solange am Token etwas läuft */
+#token-hud .ats-hud-button.active,
+.token-hud .ats-hud-button.active {
+  color: var(--ats-playing, #5fae6e);
+  border-color: #5fae6e;
+  box-shadow: 0 0 6px #5fae6e;
+}

@@ -1,0 +1,75 @@
+{
+  "ATS": {
+    "Title": "Soundboard",
+    "WindowTitle": "Soundboard: {name}",
+    "HUD": {
+      "Tooltip": "Soundboard"
+    },
+    "Levels": {
+      "whisper": "Whisper",
+      "quiet": "Quiet",
+      "medium": "Medium",
+      "loud": "Loud",
+      "veryLoud": "Very loud"
+    },
+    "Board": {
+      "HintGM": "Add sounds and share them with the token's owners using the person icon. You can also drag sounds from a playlist onto this window.",
+      "HintPlayer": "Pick a volume, duration and loop, then play the sound. Others only hear it near your token.",
+      "Empty": "No sounds on this token yet.",
+      "EmptyPlayer": "The GM has not shared any sounds with you yet.",
+      "Play": "Play",
+      "Stop": "Stop",
+      "Loop": "Loop",
+      "Duration": "Duration",
+      "Range": "Audible up to about {range} {units}",
+      "Shared": "Shared with owners – click to lock",
+      "NotShared": "GM only – click to share",
+      "PickFile": "Choose audio file",
+      "Delete": "Remove sound",
+      "Add": "Add sound",
+      "StopAll": "Stop all",
+      "Name": "Name",
+      "Playing": "Playing",
+      "LoopNextHint": "Changes to duration and loop apply the next time the sound is played."
+    },
+    "Durations": {
+      "0": "No limit",
+      "15": "15 sec",
+      "30": "30 sec",
+      "60": "1 min",
+      "120": "2 min",
+      "300": "5 min",
+      "600": "10 min",
+      "900": "15 min",
+      "1800": "30 min",
+      "3600": "60 min"
+    },
+    "Notify": {
+      "NoPermission": "You are not allowed to play this sound.",
+      "LoadFailed": "The sound could not be loaded: {src}",
+      "Added": "Sound added: {name}",
+      "DropWrongType": "You can only drop sounds or playlists from the playlist sidebar here."
+    },
+    "Settings": {
+      "Range": {
+        "Name": "Range: {level}",
+        "Hint": "Up to this distance (in scene units, usually feet) a sound at this volume can be heard. Close by it is at full volume, further away it fades."
+      },
+      "WallMode": {
+        "Name": "Walls",
+        "Hint": "How walls (with sound restriction) affect token sounds.",
+        "none": "Ignore walls",
+        "muffle": "Walls muffle the sound",
+        "block": "Walls block the sound"
+      },
+      "GmHearsAll": {
+        "Name": "GM hears everything without a selected token",
+        "Hint": "GM only: with no token selected you hear every token sound in the scene at its base volume. Select a token to hear as that token."
+      },
+      "Volume": {
+        "Name": "Personal volume for token sounds",
+        "Hint": "Only on your computer. Applied on top of Foundry's environment volume."
+      }
+    }
+  }
+}

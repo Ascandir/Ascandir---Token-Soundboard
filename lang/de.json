@@ -1,0 +1,75 @@
+{
+  "ATS": {
+    "Title": "Soundboard",
+    "WindowTitle": "Soundboard: {name}",
+    "HUD": {
+      "Tooltip": "Soundboard"
+    },
+    "Levels": {
+      "whisper": "Flüstern",
+      "quiet": "Leise",
+      "medium": "Mittel",
+      "loud": "Laut",
+      "veryLoud": "Sehr laut"
+    },
+    "Board": {
+      "HintGM": "Füge Sounds hinzu und gib sie über das Personen-Symbol für die Besitzer des Tokens frei. Du kannst auch Sounds aus einer Playlist hierher ziehen.",
+      "HintPlayer": "Wähle Lautstärke, Dauer und Wiederholung und spiele den Sound ab. Andere hören ihn nur in der Nähe deines Tokens.",
+      "Empty": "Noch keine Sounds an diesem Token.",
+      "EmptyPlayer": "Der Spielleiter hat noch keine Sounds für dich freigegeben.",
+      "Play": "Abspielen",
+      "Stop": "Stoppen",
+      "Loop": "Wiederholen (Loop)",
+      "Duration": "Dauer",
+      "Range": "Hörbar bis ca. {range} {units}",
+      "Shared": "Für Besitzer freigegeben – klicken zum Sperren",
+      "NotShared": "Nur Spielleiter – klicken zum Freigeben",
+      "PickFile": "Audiodatei wählen",
+      "Delete": "Sound entfernen",
+      "Add": "Sound hinzufügen",
+      "StopAll": "Alle stoppen",
+      "Name": "Name",
+      "Playing": "Läuft",
+      "LoopNextHint": "Änderungen an Dauer und Wiederholung gelten beim nächsten Abspielen."
+    },
+    "Durations": {
+      "0": "Ohne Limit",
+      "15": "15 Sek.",
+      "30": "30 Sek.",
+      "60": "1 Min.",
+      "120": "2 Min.",
+      "300": "5 Min.",
+      "600": "10 Min.",
+      "900": "15 Min.",
+      "1800": "30 Min.",
+      "3600": "60 Min."
+    },
+    "Notify": {
+      "NoPermission": "Du darfst diesen Sound nicht abspielen.",
+      "LoadFailed": "Der Sound konnte nicht geladen werden: {src}",
+      "Added": "Sound hinzugefügt: {name}",
+      "DropWrongType": "Hier kannst du nur Sounds oder Playlists aus der Playlist-Leiste ablegen."
+    },
+    "Settings": {
+      "Range": {
+        "Name": "Reichweite: {level}",
+        "Hint": "Bis zu dieser Entfernung (in Szenen-Einheiten, meist Fuß) ist ein Sound mit dieser Lautstärke zu hören. Ganz nah ist er voll laut, nach außen wird er leiser."
+      },
+      "WallMode": {
+        "Name": "Wände",
+        "Hint": "Wie Wände (mit Schall-Einschränkung) Token-Sounds beeinflussen.",
+        "none": "Wände ignorieren",
+        "muffle": "Wände dämpfen den Sound",
+        "block": "Wände blockieren den Sound"
+      },
+      "GmHearsAll": {
+        "Name": "SL hört alles ohne ausgewählten Token",
+        "Hint": "Nur für den Spielleiter: Ist kein Token ausgewählt, hörst du alle Token-Sounds der Szene in ihrer Grundlautstärke. Wählst du einen Token aus, hörst du wie dieser Token."
+      },
+      "Volume": {
+        "Name": "Persönliche Lautstärke für Token-Sounds",
+        "Hint": "Nur auf deinem Rechner. Wird zusätzlich zur Umgebungslautstärke von Foundry angewendet."
+      }
+    }
+  }
+}
