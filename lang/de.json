@@ -69,6 +69,10 @@
       "Volume": {
         "Name": "Persönliche Lautstärke für Token-Sounds",
         "Hint": "Nur auf deinem Rechner. Wird zusätzlich zur Umgebungslautstärke von Foundry angewendet."
+      },
+      "ShowNotes": {
+        "Name": "Noten über spielenden Token anzeigen",
+        "Hint": "Von einem Token, der gerade einen Sound abspielt, steigen kleine Noten auf. Je lauter die Stufe, desto mehr Noten. Unsichtbare oder versteckte Token zeigen keine Noten."
       }
     }
   }

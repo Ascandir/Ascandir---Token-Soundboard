@@ -334,6 +334,7 @@ const Engine = {
         return;
       }
       rec.started = true;
+      Notes.wake();
 
       rec.current = this.targetVolume(rec);
       sound.fade(rec.current, { duration: FADE_MS });
@@ -742,6 +743,129 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
   }
 }
 
+/* -------------------------------------------- */
+/*  Aufsteigende Noten über spielenden Token    */
+/* -------------------------------------------- */
+
+const NOTE_GLYPHS = ["♪", "♫", "♬", "♩"];
+/** Abstand zwischen zwei Noten in ms – je lauter, desto mehr Noten. */
+const NOTE_INTERVAL = { whisper: 1500, quiet: 1150, medium: 850, loud: 620, veryLoud: 450 };
+/** Wie hoch die Noten steigen (in Token-Höhen). */
+const NOTE_RISE = { whisper: 0.6, quiet: 0.8, medium: 1, loud: 1.25, veryLoud: 1.5 };
+
+const Notes = {
+  layer: null,
+  emitters: new Map(), // key → { el, next }
+  raf: null,
+
+  wake() {
+    if (this.raf || !setting("showNotes")) return;
+    this.raf = requestAnimationFrame((ts) => this.tick(ts));
+  },
+
+  getLayer() {
+    if (this.layer?.isConnected) return this.layer;
+    const layer = document.createElement("div");
+    layer.id = "ats-notes-layer";
+    const board = document.getElementById("board");
+    if (board) board.after(layer);
+    else document.body.append(layer);
+    this.layer = layer;
+    return layer;
+  },
+
+  clear() {
+    for (const { el } of this.emitters.values()) el.remove();
+    this.emitters.clear();
+  },
+
+  tick(ts) {
+    this.raf = null;
+    if (!canvas?.ready || !setting("showNotes")) {
+      this.clear();
+      return;
+    }
+
+    const zoom = canvas.stage?.scale?.x ?? 1;
+    const grid = canvas.dimensions?.size ?? 100;
+    const seen = new Set();
+
+    for (const [key, rec] of Engine.active) {
+      if (rec.dead || !rec.started || !rec.sound?.playing) continue;
+      const token = canvas.tokens?.get(rec.tokenId);
+      if (!token) continue;
+      seen.add(key);
+
+      let em = this.emitters.get(key);
+      if (!em) {
+        const el = document.createElement("div");
+        el.className = "ats-note-emitter";
+        this.getLayer().append(el);
+        em = { el, next: ts };
+        this.emitters.set(key, em);
+      }
+
+      // Unsichtbare Token (versteckt, außer Sicht) verraten sich nicht durch Noten.
+      const visible = (token.isVisible ?? token.visible) && !document.hidden;
+      em.el.style.display = visible ? "" : "none";
+      if (!visible) continue;
+
+      const w = token.w ?? grid;
+      const h = token.h ?? grid;
+      const pos = toScreen({ x: token.x + w / 2, y: token.y + h * 0.2 });
+      em.el.style.transform = `translate(${pos.x}px, ${pos.y}px) scale(${zoom})`;
+
+      if (ts >= em.next) {
+        const level = LEVELS.includes(rec.play.level) ? rec.play.level : "medium";
+        this.spawn(em.el, level, w, h, grid);
+        em.next = ts + NOTE_INTERVAL[level] * (0.7 + Math.random() * 0.6);
+      }
+    }
+
+    for (const [key, em] of this.emitters) {
+      if (seen.has(key)) continue;
+      // Laufende Noten noch ausfliegen lassen, dann aufräumen.
+      if (!em.el.childElementCount) {
+        em.el.remove();
+        this.emitters.delete(key);
+      }
+    }
+
+    if (seen.size || this.emitters.size) this.raf = requestAnimationFrame((t) => this.tick(t));
+  },
+
+  spawn(parent, level, w, h, grid) {
+    const note = document.createElement("span");
+    note.className = "ats-note";
+    note.textContent = NOTE_GLYPHS[Math.floor(Math.random() * NOTE_GLYPHS.length)];
+    const size = grid * (0.3 + Math.random() * 0.14);
+    const dur = 2200 + Math.random() * 1200;
+    note.style.fontSize = `${size}px`;
+    note.style.setProperty("--x0", `${(Math.random() - 0.5) * w * 0.5}px`);
+    note.style.setProperty("--dx", `${(Math.random() - 0.5) * w * 0.9}px`);
+    note.style.setProperty("--sway", `${(Math.random() - 0.5) * w * 0.35}px`);
+    note.style.setProperty("--rise", `${h * NOTE_RISE[level] * (0.8 + Math.random() * 0.4)}px`);
+    note.style.setProperty("--rot", `${(Math.random() - 0.5) * 50}deg`);
+    note.style.animationDuration = `${dur}ms`;
+    note.addEventListener("animationend", () => note.remove(), { once: true });
+    setTimeout(() => note.remove(), dur + 500);
+    parent.append(note);
+  }
+};
+
+/** Canvas-Koordinaten → Bildschirm-Koordinaten. */
+function toScreen(point) {
+  try {
+    if (typeof canvas.clientCoordinatesFromCanvas === "function") {
+      const p = canvas.clientCoordinatesFromCanvas(point);
+      if (Number.isFinite(p?.x)) return p;
+    }
+  } catch (e) { /* Fallback unten */ }
+  const p = canvas.stage.worldTransform.apply(point);
+  const rect = canvas.app?.view?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+  return { x: rect.left + p.x, y: rect.top + p.y };
+}
+
 function rerenderBoards(doc) {
   for (const app of foundry.applications.instances?.values() ?? []) {
     if (app instanceof SoundboardApp && app.concerns(doc)) app.render();
@@ -842,6 +966,16 @@ Hooks.once("init", () => {
     default: 1,
     onChange: () => Engine.scheduleVolume()
   });
+
+  game.settings.register(ID, "showNotes", {
+    name: "ATS.Settings.ShowNotes.Name",
+    hint: "ATS.Settings.ShowNotes.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: (on) => (on ? Notes.wake() : Notes.clear())
+  });
 });
 
 Hooks.once("ready", () => {
@@ -861,7 +995,10 @@ Hooks.once("ready", () => {
 Hooks.on("renderTokenHUD", onRenderTokenHUD);
 
 Hooks.on("canvasReady", () => Engine.sync());
-Hooks.on("canvasTearDown", () => Engine.stopAllLocal());
+Hooks.on("canvasTearDown", () => {
+  Engine.stopAllLocal();
+  Notes.clear();
+});
 
 Hooks.on("updateToken", (doc, change) => {
   const touched = foundry.utils.hasProperty(change, `flags.${ID}`) || Object.keys(change).some((k) => k.startsWith(`flags.${ID}`));

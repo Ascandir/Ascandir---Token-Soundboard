@@ -251,3 +251,61 @@ input.ats-name {
   border-color: #5fae6e;
   box-shadow: 0 0 6px #5fae6e;
 }
+
+/* Aufsteigende Noten über spielenden Token */
+#ats-notes-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.ats-note-emitter {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.ats-note {
+  position: absolute;
+  left: 0;
+  top: 0;
+  line-height: 1;
+  font-family: "Segoe UI Symbol", "Noto Music", "DejaVu Sans", serif;
+  font-weight: bold;
+  color: #f6d68a;
+  text-shadow:
+    0 0 2px #2a1a05,
+    0 0 3px #2a1a05,
+    0 0 10px rgba(255, 205, 110, 0.75);
+  opacity: 0;
+  animation-name: ats-note-rise;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes ats-note-rise {
+  0% {
+    transform: translate(calc(-50% + var(--x0)), -50%) scale(0.5) rotate(0deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc(-50% + var(--x0) + var(--sway)), calc(-50% - var(--rise) * 0.5)) scale(0.95) rotate(calc(var(--rot) * -0.5));
+  }
+  75% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--x0) + var(--dx)), calc(-50% - var(--rise))) scale(1.1) rotate(var(--rot));
+    opacity: 0;
+  }
+}

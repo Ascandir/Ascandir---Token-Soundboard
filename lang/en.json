@@ -69,6 +69,10 @@
       "Volume": {
         "Name": "Personal volume for token sounds",
         "Hint": "Only on your computer. Applied on top of Foundry's environment volume."
+      },
+      "ShowNotes": {
+        "Name": "Show notes above playing tokens",
+        "Hint": "Small music notes rise from a token that is playing a sound. The louder the level, the more notes. Hidden or unseen tokens show no notes."
       }
     }
   }
