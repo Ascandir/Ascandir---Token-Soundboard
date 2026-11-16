@@ -789,7 +789,77 @@ function chooseLocalFiles({ multiple = true } = {}) {
   });
 }
 
-/** Lädt eine Audiodatei in den Ordner des Akteurs hoch und gibt den Pfad zurück. */
+/** Ordner im Foundry-Datenverzeichnis, in den hochgeladene Sounds kommen. */
+const UPLOAD_DIR = ID;
+const SOCKET = `module.${ID}`;
+const pendingDirRequests = new Map(); // requestId → resolve
+
+async function dirExists(dir) {
+  try {
+    await FilePickerImpl().browse("data", dir);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Legt einen Ordner an. Spieler bitten notfalls den Rechner des Spielleiters darum. */
+async function ensureDir(dir, { askGM = true } = {}) {
+  if (await dirExists(dir)) return true;
+  const parts = dir.split("/");
+  for (let i = 1; i <= parts.length; i++) {
+    const sub = parts.slice(0, i).join("/");
+    if (i < parts.length && await dirExists(sub)) continue;
+    try {
+      await FilePickerImpl().createDirectory("data", sub, {});
+    } catch (err) {
+      console.warn(`${ID} | Ordner konnte nicht angelegt werden: ${sub}`, err);
+    }
+  }
+  if (await dirExists(dir)) return true;
+  if (!askGM || game.user.isGM || !game.users.activeGM) return false;
+
+  // Spielleiter-Rechner bitten, den Ordner anzulegen
+  const requestId = foundry.utils.randomID();
+  const answer = new Promise((resolve) => {
+    pendingDirRequests.set(requestId, resolve);
+    setTimeout(() => {
+      if (pendingDirRequests.delete(requestId)) resolve(false);
+    }, 8000);
+  });
+  game.socket.emit(SOCKET, { action: "mkdir", dir, requestId, userId: game.user.id });
+  return answer;
+}
+
+function onSocket(msg) {
+  if (!msg || typeof msg !== "object") return;
+  if (msg.action === "mkdir" && game.users.activeGM?.isSelf) {
+    // Nur unseren eigenen Upload-Ordner anlegen – nichts anderes.
+    if (msg.dir !== UPLOAD_DIR && !String(msg.dir).startsWith(`${UPLOAD_DIR}/`)) return;
+    ensureDir(msg.dir, { askGM: false }).then((ok) => {
+      game.socket.emit(SOCKET, { action: "mkdirDone", requestId: msg.requestId, userId: msg.userId, ok });
+    });
+  } else if (msg.action === "mkdirDone" && msg.userId === game.user.id) {
+    const resolve = pendingDirRequests.get(msg.requestId);
+    if (resolve) {
+      pendingDirRequests.delete(msg.requestId);
+      resolve(!!msg.ok);
+    }
+  }
+}
+
+/** Ordnername aus dem Namen des Charakters (ohne Sonderzeichen, Umlaute umgeschrieben). */
+function folderSlug(name) {
+  const slug = String(name ?? "")
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue")
+    .replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue").replace(/ß/g, "ss")
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_")
+    .slice(0, 60);
+  return slug || "Allgemein";
+}
+
+/** Lädt eine Audiodatei hoch und gibt den Pfad zurück. */
 async function uploadAudio(tokenDoc, file) {
   if (!game.user.isGM && !game.user.can("FILES_UPLOAD")) {
     ui.notifications.warn(t("Add.NoUploadRight"));
@@ -800,20 +870,34 @@ async function uploadAudio(tokenDoc, file) {
     return null;
   }
   const FP = FilePickerImpl();
-  const actorId = libDoc(tokenDoc)?.id ?? "allgemein";
-  const base = ID;
-  const folder = `${base}/${actorId}`;
-  for (const dir of [base, folder]) {
-    try { await FP.createDirectory("data", dir, {}); } catch (e) { /* existiert schon */ }
-  }
-  // Sicherer Dateiname (keine Sonderzeichen, eindeutig)
+  const actor = tokenDoc?.actor ?? libDoc(tokenDoc);
+  const actorFolder = `${UPLOAD_DIR}/${folderSlug(actor?.name ?? tokenDoc?.name)}`;
+
+  // Sicherer, eindeutiger Dateiname – mit Akteur-ID vorne, damit alles sortiert bleibt.
   const dot = file.name.lastIndexOf(".");
-  const stem = (dot > 0 ? file.name.slice(0, dot) : file.name).normalize("NFKD").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") || "sound";
+  const stem = folderSlug(dot > 0 ? file.name.slice(0, dot) : file.name).replace(/^Allgemein$/, "sound");
   const ext = dot > 0 ? file.name.slice(dot).toLowerCase() : ".mp3";
-  const named = new File([file], `${stem}-${foundry.utils.randomID(4)}${ext}`, { type: file.type });
+
+  // Zielordner: ascandir-token-soundboard/<Charaktername>.
+  // Klappt das nicht, notfalls der Modulordner, zuletzt der Hauptordner der Daten.
+  let folder = actorFolder;
+  let prefix = "";
+  if (!(await ensureDir(actorFolder))) {
+    const slug = folderSlug(actor?.name ?? tokenDoc?.name);
+    if (await ensureDir(UPLOAD_DIR)) {
+      folder = UPLOAD_DIR;
+      prefix = `${slug}-`;
+    } else {
+      folder = "";
+      prefix = `${ID}-${slug}-`;
+    }
+    console.warn(`${ID} | Ordner ${actorFolder} fehlt, lade nach "${folder || "/"}" hoch.`);
+  }
+  const named = new File([file], `${prefix}${stem}-${foundry.utils.randomID(4)}${ext}`, { type: file.type });
+
   try {
     const result = await FP.upload("data", folder, named, {}, { notify: false });
-    const path = result?.path ?? (result?.status === "success" ? `${folder}/${named.name}` : null);
+    const path = result?.path ?? (result?.status === "success" ? (folder ? `${folder}/${named.name}` : named.name) : null);
     if (!path) throw new Error(result?.message ?? "Upload fehlgeschlagen");
     return path;
   } catch (err) {
@@ -1971,6 +2055,9 @@ Hooks.once("init", () => {
 
 Hooks.once("ready", () => {
   installDropCatcher();
+  game.socket?.on(SOCKET, onSocket);
+  // Der Spielleiter legt den Upload-Ordner gleich beim Start an.
+  if (game.users.activeGM?.isSelf) ensureDir(UPLOAD_DIR, { askGM: false });
   setInterval(janitor, 10000);
   setInterval(() => Engine.watchdog(), 3000);
   const mod = game.modules.get(ID);

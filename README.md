@@ -49,7 +49,7 @@ Neue Sounds legst du mit **Sound hinzufügen** an oder ziehst sie ins Soundboard
 - einzelne Sounds oder ganze Playlists aus der Playlist-Leiste
 - Audiodateien aus dem Foundry-Dateibrowser
 
-Hochgeladene Dateien landen im Foundry-Datenordner unter `ascandir-token-soundboard/<Akteur-ID>/`.
+Hochgeladene Dateien landen im Foundry-Datenordner unter `ascandir-token-soundboard/<Charaktername>/`, also für jeden Charakter in einem eigenen Ordner.
 
 ## Spieler mit eigenen Sounds
 
