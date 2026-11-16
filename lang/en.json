@@ -13,7 +13,7 @@
       "veryLoud": "Very loud"
     },
     "Board": {
-      "HintGM": "Add sounds and share them with the token's owners using the person icon. You can drag playlist sounds as well as the character's spells and actions onto this window.",
+      "HintGM": "Create sounds, set them up and attach them to weapons, spells or actions. Use the person icon to share a sound with the token's owners.",
       "HintPlayer": "Pick a volume, duration and loop, then play the sound. Others only hear it near your token.",
       "Empty": "No sounds on this token yet.",
       "EmptyPlayer": "The GM has not shared any sounds with you yet.",
@@ -30,7 +30,9 @@
       "StopAll": "Stop all",
       "Name": "Name",
       "Playing": "Playing",
-      "LoopNextHint": "Volume, duration and loop can also be changed while the sound is playing."
+      "LoopNextHint": "Volume, duration and loop can also be changed while the sound is playing.",
+      "DropHintGM": "Drop here: playlist sounds or files from the file browser create new sounds. Drop weapons, spells and actions onto a sound to attach them.",
+      "DropHintPlayer": "Drop weapons, spells and actions onto a sound to attach them."
     },
     "Durations": {
       "0": "No limit",
@@ -48,7 +50,7 @@
       "NoPermission": "You are not allowed to play this sound.",
       "LoadFailed": "The sound could not be loaded: {src}",
       "Added": "Sound added: {name}",
-      "DropWrongType": "You can only drop sounds or playlists from the playlist sidebar here.",
+      "DropWrongType": "That can't be dropped here. Allowed are sounds (playlist, file browser) and this character's weapons, spells and actions.",
       "ItemWrongActor": "You can only drop items, spells or features of this character here."
     },
     "Settings": {
@@ -81,7 +83,7 @@
       }
     },
     "Item": {
-      "Section": "Actions & spells",
+      "Section": "Actions with their own file",
       "DropHint": "Drag an item, spell or feature of this character here to attach a sound to it.",
       "Configure": "Sound on use",
       "Title": "Sound on use",
@@ -97,7 +99,23 @@
       "Remove": "Remove",
       "Save": "Save",
       "NoFile": "Please choose an audio file first.",
-      "Off": "Off"
+      "Off": "Off",
+      "BoardNote": "Volume, loop and duration come from the soundboard."
+    },
+    "Link": {
+      "Label": "Attached to:",
+      "None": "nothing",
+      "NoneDrop": "drag a weapon, spell or action here",
+      "Choose": "Choose weapons, spells and actions",
+      "Unlink": "Detach",
+      "Linked": "Sound attached to: {item}",
+      "Title": "Attach",
+      "WindowTitle": "Attach: {name}",
+      "Hint": "Tick the weapons, spells and actions that should play this sound when used. Volume, loop and duration come from the soundboard.",
+      "Search": "Search …",
+      "LinkedTo": "→ {name}",
+      "OwnSound": "own file",
+      "NoItems": "This character has no matching entries."
     }
   }
 }

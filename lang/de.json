@@ -13,7 +13,7 @@
       "veryLoud": "Sehr laut"
     },
     "Board": {
-      "HintGM": "Füge Sounds hinzu und gib sie über das Personen-Symbol für die Besitzer des Tokens frei. Sounds aus einer Playlist sowie Zauber und Aktionen des Charakters kannst du hierher ziehen.",
+      "HintGM": "Lege Sounds an, stelle sie ein und hefte sie an Waffen, Zauber oder Aktionen. Über das Personen-Symbol gibst du einen Sound für die Besitzer des Tokens frei.",
       "HintPlayer": "Wähle Lautstärke, Dauer und Wiederholung und spiele den Sound ab. Andere hören ihn nur in der Nähe deines Tokens.",
       "Empty": "Noch keine Sounds an diesem Token.",
       "EmptyPlayer": "Der Spielleiter hat noch keine Sounds für dich freigegeben.",
@@ -30,7 +30,9 @@
       "StopAll": "Alle stoppen",
       "Name": "Name",
       "Playing": "Läuft",
-      "LoopNextHint": "Lautstärke, Dauer und Wiederholung kannst du auch ändern, während der Sound läuft."
+      "LoopNextHint": "Lautstärke, Dauer und Wiederholung kannst du auch ändern, während der Sound läuft.",
+      "DropHintGM": "Hierher ziehen: Sounds aus Playlists oder dem Dateibrowser legen neue Sounds an. Waffen, Zauber und Aktionen auf einen Sound ziehen, um sie anzuheften.",
+      "DropHintPlayer": "Waffen, Zauber und Aktionen auf einen Sound ziehen, um sie anzuheften."
     },
     "Durations": {
       "0": "Ohne Limit",
@@ -48,7 +50,7 @@
       "NoPermission": "Du darfst diesen Sound nicht abspielen.",
       "LoadFailed": "Der Sound konnte nicht geladen werden: {src}",
       "Added": "Sound hinzugefügt: {name}",
-      "DropWrongType": "Hier kannst du nur Sounds oder Playlists aus der Playlist-Leiste ablegen.",
+      "DropWrongType": "Das kann hier nicht abgelegt werden. Erlaubt sind Sounds (Playlist, Dateibrowser) sowie Waffen, Zauber und Aktionen dieses Charakters.",
       "ItemWrongActor": "Hier kannst du nur Gegenstände, Zauber oder Fähigkeiten dieses Charakters ablegen."
     },
     "Settings": {
@@ -81,7 +83,7 @@
       }
     },
     "Item": {
-      "Section": "Aktionen & Zauber",
+      "Section": "Aktionen mit eigener Datei",
       "DropHint": "Ziehe einen Gegenstand, Zauber oder eine Fähigkeit dieses Charakters hierher, um einen Sound daran zu hängen.",
       "Configure": "Sound beim Benutzen",
       "Title": "Sound beim Benutzen",
@@ -97,7 +99,23 @@
       "Remove": "Entfernen",
       "Save": "Speichern",
       "NoFile": "Bitte zuerst eine Audiodatei wählen.",
-      "Off": "Ausgeschaltet"
+      "Off": "Ausgeschaltet",
+      "BoardNote": "Lautstärke, Loop und Dauer kommen aus dem Soundboard."
+    },
+    "Link": {
+      "Label": "Angeheftet an:",
+      "None": "nichts",
+      "NoneDrop": "Waffe, Zauber oder Aktion hierher ziehen",
+      "Choose": "Waffen, Zauber und Aktionen auswählen",
+      "Unlink": "Lösen",
+      "Linked": "Sound angeheftet an: {item}",
+      "Title": "Anheften",
+      "WindowTitle": "Anheften: {name}",
+      "Hint": "Hake an, bei welchen Waffen, Zaubern und Aktionen dieser Sound beim Benutzen spielen soll. Lautstärke, Loop und Dauer kommen aus dem Soundboard.",
+      "Search": "Suchen …",
+      "LinkedTo": "→ {name}",
+      "OwnSound": "eigene Datei",
+      "NoItems": "Dieser Charakter hat keine passenden Einträge."
     }
   }
 }

@@ -210,17 +210,63 @@ function canConfigureItem(item) {
   return !!item?.isOwner && setting("playersItemSounds");
 }
 
-/** Welche Datei spielt der Gegenstand ab? (Soundboard-Sound hat Vorrang, falls gewählt.) */
+/** Soundboard-Eintrag des Akteurs, an den ein Gegenstand geheftet ist (oder null). */
+function boardEntryFor(item, cfg = getItemSound(item)) {
+  if (cfg?.source !== "board" || !item?.actor) return null;
+  const lib = item.actor.getFlag(ID, "sounds");
+  const entry = Array.isArray(lib) ? lib.find((s) => s.id === cfg.boardId) : null;
+  return entry ? normalizeEntry(entry) : null;
+}
+
+/**
+ * Welcher Sound spielt beim Benutzen?
+ * Angeheftete Soundboard-Sounds übernehmen Lautstärke, Loop und Dauer aus dem Soundboard.
+ */
 function resolveItemSound(item, cfg = getItemSound(item)) {
   if (!cfg?.enabled) return null;
-  let src = cfg.src;
-  if (cfg.source === "board" && item.actor) {
-    const lib = item.actor.getFlag(ID, "sounds");
-    const entry = Array.isArray(lib) ? lib.find((s) => s.id === cfg.boardId) : null;
-    if (entry?.src) src = entry.src;
+  if (cfg.source === "board") {
+    const entry = boardEntryFor(item, cfg);
+    if (!entry?.src) return null;
+    return { name: entry.name, src: entry.src, level: entry.level, loop: entry.loop, duration: entry.duration };
   }
-  if (!src) return null;
-  return { name: item.name, src, level: cfg.level, loop: cfg.loop, duration: cfg.duration };
+  if (!cfg.src) return null;
+  return { name: item.name, src: cfg.src, level: cfg.level, loop: cfg.loop, duration: cfg.duration };
+}
+
+/** Alle Gegenstände des Akteurs, die an diesen Soundboard-Sound geheftet sind. */
+function linkedItems(actor, soundId) {
+  if (!actor?.items) return [];
+  return [...actor.items].filter((item) => {
+    const cfg = getItemSound(item);
+    return cfg?.source === "board" && cfg.boardId === soundId;
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Gegenstände an einen Soundboard-Sound heften bzw. davon lösen (in einem Rutsch). */
+async function setLinks(actor, soundId, itemIds) {
+  const wanted = new Set(itemIds);
+  const updates = [];
+  for (const item of actor.items) {
+    const cfg = getItemSound(item);
+    const linkedHere = cfg?.source === "board" && cfg.boardId === soundId;
+    if (wanted.has(item.id) && !(linkedHere && cfg.enabled)) {
+      updates.push({ _id: item.id, [`flags.${ID}.itemSound`]: { enabled: true, source: "board", boardId: soundId, src: "", level: "medium", loop: false, duration: 0 } });
+    } else if (!wanted.has(item.id) && linkedHere) {
+      updates.push({ _id: item.id, [`flags.${ID}.-=itemSound`]: null });
+    }
+  }
+  if (updates.length) await actor.updateEmbeddedDocuments("Item", updates);
+}
+
+async function linkItem(item, soundId) {
+  if (!canConfigureItem(item)) return ui.notifications.warn(t("Notify.NoPermission"));
+  await item.setFlag(ID, "itemSound", { enabled: true, source: "board", boardId: soundId, src: "", level: "medium", loop: false, duration: 0 });
+  ui.notifications.info(t("Link.Linked", { item: item.name }));
+}
+
+async function unlinkItem(item) {
+  if (!canConfigureItem(item)) return ui.notifications.warn(t("Notify.NoPermission"));
+  await item.unsetFlag(ID, "itemSound");
 }
 
 /** Passender Token zum Akteur – bevorzugt auf der aktuellen Szene. */
@@ -244,18 +290,56 @@ async function playItemSound(item, { token } = {}) {
   return true;
 }
 
-/** Beim Benutzen einer Aktivität (Angriff, Zauber, Fähigkeit …) den Sound abspielen. */
-function onUseActivity(activity, usageConfig, results) {
+/**
+ * Auslöser für Gegenstands-Sounds. Mehrere Wege, damit es auch mit anderen Modulen
+ * (Combat HUD, Midi usw.) sicher greift – doppelte Auslösungen werden herausgefiltert.
+ */
+const lastTrigger = new Map(); // item.uuid → Zeitpunkt
+
+function speakerToken(speaker) {
+  if (!speaker?.token) return null;
+  return game.scenes.get(speaker.scene)?.tokens.get(speaker.token) ?? null;
+}
+
+/**
+ * @param {Item} item
+ * @param {object} opts
+ * @param {TokenDocument} [opts.token]
+ * @param {number} [opts.window]  Innerhalb dieser Zeit (ms) nach der letzten Auslösung nicht erneut abspielen.
+ */
+function triggerItem(item, { token = null, window = 2500 } = {}) {
   try {
-    const item = activity?.item;
     if (!item?.actor || !getItemSound(item)?.enabled) return;
-    const speaker = results?.message?.speaker;
-    const token = speaker?.token ? game.scenes.get(speaker.scene)?.tokens.get(speaker.token) : null;
+    const last = lastTrigger.get(item.uuid) ?? 0;
+    if (Date.now() - last < window) return;
+    lastTrigger.set(item.uuid, Date.now());
     playItemSound(item, { token }).catch((err) => console.error(`${ID} |`, err));
   } catch (err) {
     console.error(`${ID} | Sound zur Aktion konnte nicht gestartet werden`, err);
   }
+}
+
+/** dnd5e: Aktivität benutzt (Waffenangriff, Zauber, Fähigkeit …). */
+function onUseActivity(activity, usageConfig, results) {
+  triggerItem(activity?.item, { token: speakerToken(results?.message?.speaker) });
   // Nichts zurückgeben: "false" würde dnd5e die weitere Verarbeitung verbieten.
+}
+
+/** Sicherheitsnetz: Benutzungs-Nachricht im Chat (falls ein anderes Modul den Hook abfängt). */
+function onCreateChatMessage(message) {
+  const author = message.author ?? message.user;
+  if ((author?.id ?? author) !== game.user.id) return;
+  const flags = message.flags?.dnd5e;
+  if (!flags?.item?.uuid || (flags.messageType && flags.messageType !== "usage")) return;
+  const item = fromUuidSync(flags.item.uuid);
+  if (item?.documentName === "Item") triggerItem(item, { token: speakerToken(message.speaker) });
+}
+
+/** Sicherheitsnetz: Angriffswurf ohne vorheriges "Benutzen" (z. B. direkt aus einem HUD). */
+function onRollAttack(rolls, data) {
+  const item = data?.subject?.item;
+  // Nur abspielen, wenn diese Waffe nicht gerade eben schon benutzt wurde.
+  triggerItem(item, { window: 60000 });
 }
 
 async function stopSound(tokenDoc, soundId) {
@@ -571,6 +655,83 @@ function janitor() {
 }
 
 /* -------------------------------------------- */
+/*  Ziehen & Ablegen                            */
+/* -------------------------------------------- */
+
+const AUDIO_EXT = /\.(mp3|ogg|oga|opus|wav|flac|webm|m4a|aac)(\?.*)?$/i;
+
+/** Liest die Daten eines Ablege-Vorgangs – egal in welchem Format sie mitkommen. */
+function readDragData(event) {
+  const dt = event.dataTransfer;
+  for (const type of ["text/plain", "application/json"]) {
+    try {
+      const raw = dt?.getData(type);
+      if (raw) return JSON.parse(raw);
+    } catch (e) { /* nächstes Format */ }
+  }
+  try {
+    const TE = foundry.applications.ux?.TextEditor?.implementation ?? globalThis.TextEditor;
+    const data = TE?.getDragEventData?.(event);
+    if (data && Object.keys(data).length) return data;
+  } catch (e) { /* nichts */ }
+  try {
+    const raw = dt?.getData("text/uri-list") || dt?.getData("text/plain") || dt?.getData("text");
+    if (raw && AUDIO_EXT.test(raw.trim())) return { src: raw.trim() };
+  } catch (e) { /* nichts */ }
+  return {};
+}
+
+function sameActor(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  // Bogen des Basis-Akteurs vs. Token-Akteur (oder umgekehrt)
+  return (a.id === b.id) || (a.id === b.token?.actorId) || (b.id === a.token?.actorId);
+}
+
+/** Gegenstand aus den Ablege-Daten (auch über Aktivitäten, z. B. den Waffenangriff). */
+async function itemFromDrop(data, actor) {
+  if (!data || typeof data !== "object") return null;
+  let doc = null;
+  if (data.uuid) {
+    try { doc = await fromUuid(data.uuid); } catch (e) { doc = null; }
+    // Aktivitäten-UUID ("…Item.abc.Activity.xyz") notfalls auf den Gegenstand kürzen
+    if (!doc && /\.Item\.[^.]+\./.test(data.uuid)) {
+      const itemUuid = data.uuid.replace(/(\.Item\.[^.]+)\..*$/, "$1");
+      try { doc = await fromUuid(itemUuid); } catch (e) { doc = null; }
+    }
+  }
+  if (!doc && data.type === "Item" && actor) {
+    const id = data.data?._id ?? data.id ?? data.itemId;
+    doc = id ? actor.items.get(id) : null;
+  }
+  if (!doc && data.itemId && actor) doc = actor.items.get(data.itemId) ?? null;
+  if (!doc) return null;
+  if (doc.documentName === "Item") return doc;
+  // Aktivität (dnd5e), aktiver Effekt o. Ä. → zugehöriger Gegenstand
+  const item = doc.item ?? (doc.parent?.documentName === "Item" ? doc.parent : null);
+  return item?.documentName === "Item" ? item : null;
+}
+
+/** Sounds aus den Ablege-Daten: Playlist, Playlist-Sound oder einzelne Audiodatei. */
+async function soundsFromDrop(data) {
+  if (!data || typeof data !== "object") return [];
+  let doc = null;
+  if (data.uuid) {
+    try { doc = await fromUuid(data.uuid); } catch (e) { doc = null; }
+  }
+  if (!doc && data.playlistId) {
+    const playlist = game.playlists.get(data.playlistId);
+    doc = data.soundId ? playlist?.sounds.get(data.soundId) : playlist;
+  }
+  if (doc?.documentName === "Playlist") return [...doc.sounds].filter((s) => s.path).map((s) => ({ name: s.name, src: s.path }));
+  if (doc?.documentName === "PlaylistSound" && doc.path) return [{ name: doc.name, src: doc.path }];
+  if (doc?.documentName === "AmbientSound" && doc.path) return [{ name: nameFromPath(doc.path), src: doc.path }];
+  const src = data.src ?? data.path ?? data.texture?.src ?? data.data?.path ?? data.data?.src;
+  if (typeof src === "string" && AUDIO_EXT.test(src)) return [{ name: nameFromPath(src), src }];
+  return [];
+}
+
+/* -------------------------------------------- */
 /*  Soundboard-Fenster                          */
 /* -------------------------------------------- */
 
@@ -594,9 +755,21 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
       addSound: SoundboardApp.#onAdd,
       stopAll: SoundboardApp.#onStopAll,
       toggleItem: SoundboardApp.#onToggleItem,
-      configItem: SoundboardApp.#onConfigItem
+      configItem: SoundboardApp.#onConfigItem,
+      openLinks: SoundboardApp.#onOpenLinks,
+      unlinkItem: SoundboardApp.#onUnlinkItem
     }
   };
+
+  static #onOpenLinks(event, target) {
+    const soundId = target.closest("[data-sound-id]")?.dataset.soundId;
+    if (soundId && this.tokenDoc.actor) LinkPicker.open(this.tokenDoc, soundId);
+  }
+
+  static async #onUnlinkItem(event, target) {
+    const item = SoundboardApp.#item(this, target);
+    if (item) await unlinkItem(item);
+  }
 
   static #item(app, target) {
     const id = target.closest("[data-item-id]")?.dataset.itemId;
@@ -661,8 +834,25 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
     const playing = new Set(getPlaying(td).filter((p) => !isExpired(p)).map((p) => p.soundId));
     const units = canvas.scene?.grid?.units || td.parent?.grid?.units || "ft";
 
+    const actor = td.actor;
+    const canConfig = !!actor && (isGM || (actor.isOwner && setting("playersItemSounds")));
+
     const rows = sounds.map((s) => {
       const isPlaying = playing.has(s.id);
+      const links = linkedItems(actor, s.id);
+      const chips = links.map((item) => `
+        <span class="ats-chip" data-item-id="${esc(item.id)}" data-tooltip="${esc(item.name)}">
+          <img src="${esc(item.img)}" alt="">
+          <span>${esc(item.name)}</span>
+          ${canConfig ? `<button type="button" data-action="unlinkItem" data-tooltip="${esc(t("Link.Unlink"))}"><i class="fa-solid fa-xmark"></i></button>` : ""}
+        </span>`).join("");
+      const linkBar = canConfig || links.length
+        ? `<div class="ats-links">
+             <span class="ats-links-label"><i class="fa-solid fa-link"></i> ${esc(t("Link.Label"))}</span>
+             ${chips || `<span class="ats-links-none">${esc(t(canConfig ? "Link.NoneDrop" : "Link.None"))}</span>`}
+             ${canConfig ? `<button type="button" class="ats-link-add" data-action="openLinks" data-tooltip="${esc(t("Link.Choose"))}"><i class="fa-solid fa-plus"></i></button>` : ""}
+           </div>`
+        : "";
       const levels = LEVELS.map((lv) => {
         const tip = `${t(`Levels.${lv}`)} – ${t("Board.Range", { range: rangeFor(lv), units })}`;
         return `<button type="button" class="ats-level${s.level === lv ? " active" : ""}" data-action="setLevel" data-level="${lv}" data-tooltip="${esc(tip)}">${esc(t(`Levels.${lv}`))}</button>`;
@@ -704,16 +894,17 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
                 <select data-field="duration">${durations.join("")}</select>
               </label>
             </div>
+            ${linkBar}
           </div>
         </li>`;
     }).join("");
 
-    // Gegenstände/Zauber mit Sound
-    const actor = td.actor;
-    const canConfig = !!actor && (isGM || (actor.isOwner && setting("playersItemSounds")));
+    // Gegenstände/Zauber mit eigener Datei (nicht an einen Soundboard-Sound geheftet)
+    const boardIds = new Set(getLibrary(td).map((s) => s.id));
     const items = (actor?.items ? [...actor.items] : [])
       .map((item) => ({ item, cfg: getItemSound(item) }))
       .filter(({ cfg }) => cfg && (cfg.enabled || canConfig))
+      .filter(({ cfg }) => cfg.source !== "board" || !boardIds.has(cfg.boardId))
       .sort((a, b) => a.item.name.localeCompare(b.item.name));
 
     const itemRows = items.map(({ item, cfg }) => {
@@ -736,15 +927,18 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
         </li>`;
     }).join("");
 
-    const itemSection = itemRows || canConfig
+    const itemSection = itemRows
       ? `<section class="ats-items">
            <h3><i class="fa-solid fa-wand-sparkles"></i> ${esc(t("Item.Section"))}</h3>
-           ${itemRows ? `<ol class="ats-item-list">${itemRows}</ol>` : ""}
-           ${canConfig ? `<p class="ats-drop-hint"><i class="fa-solid fa-hand-pointer"></i> ${esc(t("Item.DropHint"))}</p>` : ""}
+           <ol class="ats-item-list">${itemRows}</ol>
          </section>`
       : "";
 
-    const empty = itemSection ? "" : `<p class="ats-empty">${esc(t(isGM ? "Board.Empty" : "Board.EmptyPlayer"))}</p>`;
+    const dropHint = isGM || canConfig
+      ? `<p class="ats-drop-hint"><i class="fa-solid fa-hand-pointer"></i> ${esc(t(isGM ? "Board.DropHintGM" : "Board.DropHintPlayer"))}</p>`
+      : "";
+
+    const empty = rows || itemSection ? "" : `<p class="ats-empty">${esc(t(isGM ? "Board.Empty" : "Board.EmptyPlayer"))}</p>`;
     const footer = `
       <footer class="ats-footer">
         ${isGM ? `<button type="button" data-action="addSound"><i class="fa-solid fa-plus"></i> ${esc(t("Board.Add"))}</button>` : ""}
@@ -759,6 +953,7 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
       <div class="ats-scroll">
         ${rows ? `<ol class="ats-list">${rows}</ol>` : empty}
         ${itemSection}
+        ${dropHint}
       </div>
       ${footer}`;
   }
@@ -789,47 +984,51 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
     const mayDrop = game.user.isGM || (this.tokenDoc.actor?.isOwner && setting("playersItemSounds"));
     if (mayDrop && !this._dropBound) {
       this._dropBound = true;
-      html.addEventListener("dragover", (event) => {
+      // Capture-Phase: wir bekommen das Ablegen, bevor andere Elemente im Fenster es abfangen.
+      const allow = (event) => {
         event.preventDefault();
         html.classList.add("ats-drag");
-      });
+        for (const row of html.querySelectorAll(".ats-row.ats-drop-target")) row.classList.remove("ats-drop-target");
+        event.target.closest?.(".ats-row")?.classList.add("ats-drop-target");
+      };
+      html.addEventListener("dragenter", allow, true);
+      html.addEventListener("dragover", allow, true);
       html.addEventListener("dragleave", (event) => {
-        if (!html.contains(event.relatedTarget)) html.classList.remove("ats-drag");
-      });
-      html.addEventListener("drop", (event) => {
+        if (html.contains(event.relatedTarget)) return;
         html.classList.remove("ats-drag");
-        this.#onDrop(event);
-      });
+        for (const row of html.querySelectorAll(".ats-drop-target")) row.classList.remove("ats-drop-target");
+      }, true);
+      html.addEventListener("drop", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        html.classList.remove("ats-drag");
+        for (const row of html.querySelectorAll(".ats-drop-target")) row.classList.remove("ats-drop-target");
+        this.#onDrop(event).catch((err) => console.error(`${ID} | Ablegen fehlgeschlagen`, err));
+      }, true);
     }
   }
 
   async #onDrop(event) {
-    event.preventDefault();
-    let data;
-    try {
-      const TE = foundry.applications.ux?.TextEditor?.implementation ?? globalThis.TextEditor;
-      data = TE.getDragEventData(event);
-    } catch (err) {
-      try { data = JSON.parse(event.dataTransfer.getData("text/plain")); } catch (e) { data = null; }
+    const data = readDragData(event);
+    console.debug(`${ID} | Abgelegt:`, data);
+    const soundId = event.target.closest?.("[data-sound-id]")?.dataset.soundId ?? null;
+    const actor = this.tokenDoc.actor;
+
+    // 1) Gegenstand, Waffe, Zauber oder Aktivität (z. B. Waffenangriff)
+    const item = await itemFromDrop(data, actor);
+    if (item) {
+      if (!actor || !sameActor(item.parent, actor)) return ui.notifications.warn(t("Notify.ItemWrongActor"));
+      const own = actor.items.get(item.id) ?? item;
+      if (!canConfigureItem(own)) return ui.notifications.warn(t("Notify.NoPermission"));
+      if (soundId) return linkItem(own, soundId);
+      return ItemSoundConfig.open(own);
     }
-    if (data?.type === "Item" && data.uuid) {
-      const item = await fromUuid(data.uuid);
-      const actor = this.tokenDoc.actor;
-      if (!item || !actor || item.parent !== actor) {
-        ui.notifications.warn(t("Notify.ItemWrongActor"));
-        return;
-      }
-      if (canConfigureItem(item)) ItemSoundConfig.open(item);
-      return;
-    }
-    if (!game.user.isGM || !data?.uuid || !["PlaylistSound", "Playlist"].includes(data.type)) {
-      ui.notifications.warn(t(game.user.isGM ? "Notify.DropWrongType" : "Notify.ItemWrongActor"));
-      return;
-    }
-    const doc = await fromUuid(data.uuid);
-    if (!doc) return;
-    const sounds = doc.documentName === "Playlist" ? [...doc.sounds] : [doc];
-    await addEntries(this.tokenDoc, sounds.filter((s) => s.path).map((s) => ({ name: s.name, src: s.path })));
+
+    // 2) Sounds: Playlist, Playlist-Sound oder Audiodatei (z. B. aus dem Dateibrowser)
+    if (!game.user.isGM) return ui.notifications.warn(t("Notify.ItemWrongActor"));
+    const sounds = await soundsFromDrop(data);
+    if (!sounds.length) return ui.notifications.warn(t("Notify.DropWrongType"));
+    await addEntries(this.tokenDoc, sounds);
   }
 
   /* ---------- Aktionen ---------- */
@@ -1153,7 +1352,8 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
         </div>
       </fieldset>
 
-      <fieldset>
+      <p class="ats-board-note"${useBoard ? "" : " hidden"}><i class="fa-solid fa-circle-info"></i> ${esc(t("Item.BoardNote"))}</p>
+      <fieldset class="ats-own-volume"${useBoard ? " hidden" : ""}>
         <legend>${esc(t("Item.Volume"))}</legend>
         <div class="ats-levels">${levels}</div>
         <div class="ats-options">
@@ -1178,15 +1378,28 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
 
   _onRender(context, options) {
     super._onRender?.(context, options);
+    const el = this.element;
+    // Eigene Lautstärke nur zeigen, wenn eine eigene Datei gewählt ist.
+    const sync = () => {
+      const board = el.querySelector("[name=source][value=board]")?.checked;
+      const own = el.querySelector(".ats-own-volume");
+      const note = el.querySelector(".ats-board-note");
+      if (own) own.hidden = !!board;
+      if (note) note.hidden = !board;
+      this.setPosition?.({ height: "auto" });
+    };
     // Auswahl im Soundboard-Menü oder Tippen eines Pfads wählt automatisch die passende Quelle.
-    this.element.querySelector("[name=boardId]")?.addEventListener("change", () => {
-      const r = this.element.querySelector("[name=source][value=board]");
+    el.querySelector("[name=boardId]")?.addEventListener("change", () => {
+      const r = el.querySelector("[name=source][value=board]");
       if (r) r.checked = true;
+      sync();
     });
-    this.element.querySelector("[name=src]")?.addEventListener("input", () => {
-      const r = this.element.querySelector("[name=source][value=file]");
+    el.querySelector("[name=src]")?.addEventListener("input", () => {
+      const r = el.querySelector("[name=source][value=file]");
       if (r) r.checked = true;
+      sync();
     });
+    for (const r of el.querySelectorAll("[name=source]")) r.addEventListener("change", sync);
   }
 
   async close(options) {
@@ -1218,7 +1431,10 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
     try {
       const sound = new foundry.audio.Sound(src, { context: game.audio.environment });
       await sound.load();
-      await sound.play({ volume: LEVEL_GAIN[this.state.level] ?? 0.75 });
+      const lvl = this.state.source === "board"
+        ? this.boardSounds().find((b) => b.id === this.state.boardId)?.level
+        : this.state.level;
+      await sound.play({ volume: LEVEL_GAIN[lvl] ?? 0.75 });
       this.preview = sound;
       sound.addEventListener?.("end", () => {
         if (this.preview === sound) {
@@ -1271,6 +1487,120 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
       loop: s.loop,
       duration: s.duration
     });
+  }
+}
+
+/* -------------------------------------------- */
+/*  Auswahl: Sound an Waffen/Zauber/Aktionen    */
+/* -------------------------------------------- */
+
+const TYPE_ORDER = ["weapon", "spell", "feat", "consumable", "equipment", "tool"];
+const TYPE_SKIP = new Set(["class", "subclass", "background", "race", "species", "facility"]);
+
+class LinkPicker extends foundry.applications.api.ApplicationV2 {
+  static DEFAULT_OPTIONS = {
+    tag: "form",
+    classes: ["ats-link-picker"],
+    window: { title: "ATS.Link.Title", icon: "fa-solid fa-link", resizable: true },
+    position: { width: 420, height: 560 },
+    form: { handler: LinkPicker.#onSubmit, closeOnSubmit: true, submitOnChange: false }
+  };
+
+  static open(tokenDoc, soundId) {
+    const id = `ats-link-picker-${tokenDoc.id}-${soundId}`;
+    const existing = foundry.applications.instances?.get(id);
+    if (existing) {
+      existing.bringToFront?.();
+      return existing;
+    }
+    const app = new LinkPicker({ id, tokenDoc, soundId });
+    app.render({ force: true });
+    return app;
+  }
+
+  constructor(options = {}) {
+    super(options);
+    this.tokenDoc = options.tokenDoc;
+    this.soundId = options.soundId;
+  }
+
+  get actor() {
+    return this.tokenDoc.actor;
+  }
+
+  get entry() {
+    return getLibrary(this.tokenDoc).find((s) => s.id === this.soundId);
+  }
+
+  get title() {
+    return t("Link.WindowTitle", { name: this.entry?.name ?? "" });
+  }
+
+  async _renderHTML() {
+    const actor = this.actor;
+    const library = getLibrary(this.tokenDoc);
+    const groups = new Map();
+    for (const item of actor?.items ?? []) {
+      if (TYPE_SKIP.has(item.type) || !canConfigureItem(item)) continue;
+      if (!groups.has(item.type)) groups.set(item.type, []);
+      groups.get(item.type).push(item);
+    }
+    const types = [...groups.keys()].sort((a, b) => {
+      const ia = TYPE_ORDER.indexOf(a);
+      const ib = TYPE_ORDER.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+
+    const sections = types.map((type) => {
+      const label = game.i18n.localize(CONFIG.Item.typeLabels?.[type] ?? type);
+      const rows = groups.get(type).sort((a, b) => a.name.localeCompare(b.name)).map((item) => {
+        const cfg = getItemSound(item);
+        const here = cfg?.source === "board" && cfg.boardId === this.soundId;
+        let note = "";
+        if (cfg && !here) {
+          const other = cfg.source === "board" ? library.find((s) => s.id === cfg.boardId)?.name : null;
+          note = other ? t("Link.LinkedTo", { name: other }) : t("Link.OwnSound");
+        }
+        return `
+          <label class="ats-pick" data-name="${esc(item.name.toLowerCase())}">
+            <input type="checkbox" name="item" value="${esc(item.id)}"${here ? " checked" : ""}>
+            <img src="${esc(item.img)}" alt="">
+            <span class="ats-pick-name">${esc(item.name)}</span>
+            ${note ? `<span class="ats-pick-note">${esc(note)}</span>` : ""}
+          </label>`;
+      }).join("");
+      return `<fieldset class="ats-pick-group"><legend>${esc(label)}</legend>${rows}</fieldset>`;
+    }).join("");
+
+    return `
+      <p class="ats-pick-hint">${esc(t("Link.Hint"))}</p>
+      <input type="search" class="ats-pick-search" placeholder="${esc(t("Link.Search"))}">
+      <div class="ats-pick-list">${sections || `<p class="ats-empty">${esc(t("Link.NoItems"))}</p>`}</div>
+      <footer class="ats-footer">
+        <button type="submit"><i class="fa-solid fa-floppy-disk"></i> ${esc(t("Item.Save"))}</button>
+      </footer>`;
+  }
+
+  _replaceHTML(result, content) {
+    content.innerHTML = result;
+  }
+
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    const search = this.element.querySelector(".ats-pick-search");
+    search?.addEventListener("input", () => {
+      const q = search.value.trim().toLowerCase();
+      for (const row of this.element.querySelectorAll(".ats-pick")) row.hidden = !!q && !row.dataset.name.includes(q);
+      for (const group of this.element.querySelectorAll(".ats-pick-group")) {
+        group.hidden = ![...group.querySelectorAll(".ats-pick")].some((r) => !r.hidden);
+      }
+    });
+    search?.focus();
+  }
+
+  static async #onSubmit() {
+    const ids = [...this.element.querySelectorAll("input[name=item]:checked")].map((i) => i.value);
+    if (this.actor) await setLinks(this.actor, this.soundId, ids);
   }
 }
 
@@ -1480,6 +1810,8 @@ Hooks.once("ready", () => {
 Hooks.on("renderTokenHUD", onRenderTokenHUD);
 
 Hooks.on("dnd5e.postUseActivity", onUseActivity);
+Hooks.on("createChatMessage", onCreateChatMessage);
+Hooks.on("dnd5e.postRollAttack", onRollAttack);
 Hooks.on("renderItemSheet5e", onRenderItemSheet);
 Hooks.on("renderItemSheetV2", onRenderItemSheet);
 

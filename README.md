@@ -27,16 +27,23 @@ Das Noten-Symbol erscheint im Rechtsklick-Menü des eigenen Tokens (oben mittig)
 - **Wiederholen (Loop):** an oder aus
 - **Dauer:** ohne Limit oder 15 Sekunden bis 60 Minuten
 
-## Sounds an Aktionen, Zauber und Gegenständen
+## Sounds an Waffen, Zauber und Aktionen anheften
 
-Ein Sound kann automatisch abgespielt werden, sobald eine Aktion, ein Zauber, eine Fähigkeit oder ein Gegenstand benutzt wird (dnd5e).
+Sounds stellst du im Soundboard ein (Lautstärke, Loop, Dauer) und heftest sie dann an Waffen, Zauber oder Aktionen. Sobald die Waffe, der Zauber oder die Aktion benutzt wird, spielt der Sound automatisch am Token, bei Waffen also beim Waffenangriff.
 
-- **Im Gegenstands- oder Zauberbogen:** Oben in der Titelleiste auf das **Noten-Symbol** klicken.
-- **Im Soundboard:** Den Zauber oder Gegenstand vom Charakterbogen ins Soundboard-Fenster ziehen.
+- **Ziehen:** Eine Waffe, einen Zauber oder eine Aktion vom Charakterbogen direkt auf einen Sound im Soundboard ziehen.
+- **Auswählen:** Beim Sound unter „Angeheftet an“ auf **+** klicken und die gewünschten Einträge anhaken.
+- **Lösen:** Auf das **×** am Eintrag klicken.
 
-Als Sound wählst du entweder einen Sound aus dem Soundboard des Charakters oder eine eigene Datei. Lautstärke, Wiederholung und Dauer stellst du wie gewohnt ein, mit „Probehören“ hörst du ihn vorher nur für dich. Der Sound spielt am Token, der die Aktion benutzt, und ist nur in Reichweite zu hören. Im Soundboard stehen alle verknüpften Aktionen unter „Aktionen & Zauber“ und lassen sich dort auch abspielen oder stoppen.
+Ein Sound kann an beliebig viele Einträge geheftet werden. Änderst du Lautstärke, Loop oder Dauer im Soundboard, gilt das automatisch für alle angehefteten Einträge.
 
-Standardmäßig darf nur der Spielleiter Sounds an Aktionen hängen. Mit der Einstellung **„Spieler dürfen Sounds an eigene Aktionen hängen“** geht das auch für Spieler bei ihren eigenen Charakteren.
+Alternativ lässt sich im Bogen einer Waffe oder eines Zaubers über das **Noten-Symbol** in der Titelleiste auch eine eigene Audiodatei hinterlegen.
+
+Standardmäßig darf nur der Spielleiter anheften. Mit der Einstellung **„Spieler dürfen Sounds an eigene Aktionen hängen“** geht das auch für Spieler bei ihren eigenen Charakteren.
+
+## Sounds hinzufügen
+
+Neue Sounds legst du als Spielleiter mit **Sound hinzufügen** an oder ziehst sie ins Soundboard: einzelne Sounds oder ganze Playlists aus der Playlist-Leiste sowie Audiodateien aus dem Dateibrowser.
 
 ## Reichweiten (Standard)
 
