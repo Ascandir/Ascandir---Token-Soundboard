@@ -1438,7 +1438,7 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
     this.item = options.item;
     const cfg = getItemSound(this.item);
     const board = this.boardSounds();
-    this.state = cfg ?? {
+    this.cfgState = cfg ?? {
       enabled: true,
       source: board.length ? "board" : "file",
       boardId: board[0]?.id ?? "",
@@ -1464,7 +1464,7 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
   readForm() {
     const f = this.element;
     if (!f?.elements) return;
-    const s = this.state;
+    const s = this.cfgState;
     s.enabled = !!f.elements.enabled?.checked;
     s.source = f.elements.source?.value === "board" ? "board" : "file";
     s.boardId = f.elements.boardId?.value ?? s.boardId;
@@ -1474,7 +1474,7 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
   }
 
   async _renderHTML() {
-    const s = this.state;
+    const s = this.cfgState;
     const board = this.boardSounds();
     const units = canvas.scene?.grid?.units || "ft";
 
@@ -1575,7 +1575,7 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
 
   currentSrc() {
     this.readForm();
-    const s = this.state;
+    const s = this.cfgState;
     if (s.source === "board") return this.boardSounds().find((b) => b.id === s.boardId)?.src ?? "";
     return s.src;
   }
@@ -1597,9 +1597,9 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
     try {
       const sound = new foundry.audio.Sound(src, { context: game.audio.environment });
       await sound.load();
-      const lvl = this.state.source === "board"
-        ? this.boardSounds().find((b) => b.id === this.state.boardId)?.level
-        : this.state.level;
+      const lvl = this.cfgState.source === "board"
+        ? this.boardSounds().find((b) => b.id === this.cfgState.boardId)?.level
+        : this.cfgState.level;
       await sound.play({ volume: LEVEL_GAIN[lvl] ?? 0.75 });
       this.preview = sound;
       sound.addEventListener?.("end", () => {
@@ -1616,7 +1616,7 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
 
   static #onSetLevel(event, target) {
     this.readForm();
-    this.state.level = target.dataset.level;
+    this.cfgState.level = target.dataset.level;
     for (const b of this.element.querySelectorAll(".ats-level")) b.classList.toggle("active", b === target);
   }
 
@@ -1625,10 +1625,10 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
     const FP = foundry.applications.apps?.FilePicker?.implementation ?? globalThis.FilePicker;
     new FP({
       type: "audio",
-      current: this.state.src,
+      current: this.cfgState.src,
       callback: (path) => {
-        this.state.src = path;
-        this.state.source = "file";
+        this.cfgState.src = path;
+        this.cfgState.source = "file";
         this.render();
       }
     }).render(true);
@@ -1642,7 +1642,7 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
 
   static async #onSubmit() {
     this.readForm();
-    const s = this.state;
+    const s = this.cfgState;
     if (s.source === "file" && !s.src) return ui.notifications.warn(t("Item.NoFile"));
     await this.item.setFlag(ID, "itemSound", {
       enabled: s.enabled,
