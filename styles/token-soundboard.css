@@ -309,3 +309,175 @@ input.ats-name {
     opacity: 0;
   }
 }
+
+/* ---------- Soundboard-Knopf oben mittig über dem Token ---------- */
+#token-hud > .ats-hud-button,
+.token-hud > .ats-hud-button {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  z-index: 2;
+}
+
+/* ---------- Scrollbereich im Soundboard ---------- */
+.ats-soundboard .ats-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
+}
+
+.ats-soundboard .ats-scroll .ats-list {
+  overflow: visible;
+}
+
+/* ---------- Aktionen & Zauber ---------- */
+.ats-items h3 {
+  margin: 4px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--ats-line);
+  font-size: 1em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ats-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ats-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--ats-line);
+  border-radius: 6px;
+  background: var(--ats-soft);
+}
+
+.ats-item-row.playing {
+  border-color: var(--ats-playing);
+  box-shadow: inset 3px 0 0 var(--ats-playing);
+}
+
+.ats-item-row.disabled {
+  opacity: 0.55;
+}
+
+.ats-item-row img {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.ats-item-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ats-item-info {
+  flex: 0 1 auto;
+  font-size: 0.8em;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.ats-play.small {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  font-size: 0.85em;
+}
+
+.ats-item-row.playing .ats-play.small {
+  background: var(--ats-playing);
+  color: #fff;
+  border-color: var(--ats-playing);
+}
+
+.ats-drop-hint {
+  margin: 6px 0 0;
+  padding: 8px;
+  border: 1px dashed var(--ats-line);
+  border-radius: 6px;
+  font-size: 0.85em;
+  opacity: 0.75;
+  text-align: center;
+}
+
+/* ---------- Fenster: Sound für Aktion / Zauber ---------- */
+.ats-item-config {
+  --ats-accent: #c9a24a;
+  --ats-playing: #5fae6e;
+  --ats-line: rgba(127, 127, 127, 0.35);
+  --ats-soft: rgba(127, 127, 127, 0.12);
+}
+
+.ats-item-config .window-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.ats-item-config fieldset {
+  margin: 0;
+  padding: 6px 8px 8px;
+  border: 1px solid var(--ats-line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ats-item-config legend {
+  padding: 0 4px;
+  font-weight: bold;
+}
+
+.ats-item-config .ats-check,
+.ats-item-config .ats-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.ats-item-config .ats-radio select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ats-item-config .ats-file {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.ats-item-config .ats-file input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+}
+
+/* Noten-Knopf im Gegenstandsbogen leuchtet, wenn ein Sound hinterlegt ist */
+.window-header .ats-item-header.active {
+  color: #e0b955;
+  text-shadow: 0 0 6px rgba(224, 185, 85, 0.7);
+}

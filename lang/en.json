@@ -13,7 +13,7 @@
       "veryLoud": "Very loud"
     },
     "Board": {
-      "HintGM": "Add sounds and share them with the token's owners using the person icon. You can also drag sounds from a playlist onto this window.",
+      "HintGM": "Add sounds and share them with the token's owners using the person icon. You can drag playlist sounds as well as the character's spells and actions onto this window.",
       "HintPlayer": "Pick a volume, duration and loop, then play the sound. Others only hear it near your token.",
       "Empty": "No sounds on this token yet.",
       "EmptyPlayer": "The GM has not shared any sounds with you yet.",
@@ -48,7 +48,8 @@
       "NoPermission": "You are not allowed to play this sound.",
       "LoadFailed": "The sound could not be loaded: {src}",
       "Added": "Sound added: {name}",
-      "DropWrongType": "You can only drop sounds or playlists from the playlist sidebar here."
+      "DropWrongType": "You can only drop sounds or playlists from the playlist sidebar here.",
+      "ItemWrongActor": "You can only drop items, spells or features of this character here."
     },
     "Settings": {
       "Range": {
@@ -73,7 +74,30 @@
       "ShowNotes": {
         "Name": "Show notes above playing tokens",
         "Hint": "Small music notes rise from a token that is playing a sound. The louder the level, the more notes. Hidden or unseen tokens show no notes."
+      },
+      "PlayersItemSounds": {
+        "Name": "Players may attach sounds to their own actions",
+        "Hint": "When off, only the GM can attach sounds to actions, spells and items. Players still hear and see the configured sounds."
       }
+    },
+    "Item": {
+      "Section": "Actions & spells",
+      "DropHint": "Drag an item, spell or feature of this character here to attach a sound to it.",
+      "Configure": "Sound on use",
+      "Title": "Sound on use",
+      "WindowTitle": "Sound on use: {name}",
+      "Hint": "This sound plays automatically at the token whenever the action, spell or item is used. Others only hear it within range.",
+      "Enabled": "Play sound on use",
+      "Source": "Sound",
+      "FromBoard": "From the soundboard:",
+      "FromFile": "Own file:",
+      "Volume": "Volume & playback",
+      "Preview": "Preview",
+      "PreviewStop": "Stop preview",
+      "Remove": "Remove",
+      "Save": "Save",
+      "NoFile": "Please choose an audio file first.",
+      "Off": "Off"
     }
   }
 }

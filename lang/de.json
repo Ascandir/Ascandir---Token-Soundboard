@@ -13,7 +13,7 @@
       "veryLoud": "Sehr laut"
     },
     "Board": {
-      "HintGM": "Füge Sounds hinzu und gib sie über das Personen-Symbol für die Besitzer des Tokens frei. Du kannst auch Sounds aus einer Playlist hierher ziehen.",
+      "HintGM": "Füge Sounds hinzu und gib sie über das Personen-Symbol für die Besitzer des Tokens frei. Sounds aus einer Playlist sowie Zauber und Aktionen des Charakters kannst du hierher ziehen.",
       "HintPlayer": "Wähle Lautstärke, Dauer und Wiederholung und spiele den Sound ab. Andere hören ihn nur in der Nähe deines Tokens.",
       "Empty": "Noch keine Sounds an diesem Token.",
       "EmptyPlayer": "Der Spielleiter hat noch keine Sounds für dich freigegeben.",
@@ -48,7 +48,8 @@
       "NoPermission": "Du darfst diesen Sound nicht abspielen.",
       "LoadFailed": "Der Sound konnte nicht geladen werden: {src}",
       "Added": "Sound hinzugefügt: {name}",
-      "DropWrongType": "Hier kannst du nur Sounds oder Playlists aus der Playlist-Leiste ablegen."
+      "DropWrongType": "Hier kannst du nur Sounds oder Playlists aus der Playlist-Leiste ablegen.",
+      "ItemWrongActor": "Hier kannst du nur Gegenstände, Zauber oder Fähigkeiten dieses Charakters ablegen."
     },
     "Settings": {
       "Range": {
@@ -73,7 +74,30 @@
       "ShowNotes": {
         "Name": "Noten über spielenden Token anzeigen",
         "Hint": "Von einem Token, der gerade einen Sound abspielt, steigen kleine Noten auf. Je lauter die Stufe, desto mehr Noten. Unsichtbare oder versteckte Token zeigen keine Noten."
+      },
+      "PlayersItemSounds": {
+        "Name": "Spieler dürfen Sounds an eigene Aktionen hängen",
+        "Hint": "Ist das aus, kann nur der Spielleiter Sounds an Aktionen, Zauber und Gegenstände hängen. Spieler hören und sehen die eingestellten Sounds trotzdem."
       }
+    },
+    "Item": {
+      "Section": "Aktionen & Zauber",
+      "DropHint": "Ziehe einen Gegenstand, Zauber oder eine Fähigkeit dieses Charakters hierher, um einen Sound daran zu hängen.",
+      "Configure": "Sound beim Benutzen",
+      "Title": "Sound beim Benutzen",
+      "WindowTitle": "Sound beim Benutzen: {name}",
+      "Hint": "Dieser Sound spielt automatisch am Token, sobald die Aktion, der Zauber oder der Gegenstand benutzt wird. Andere hören ihn nur in Reichweite.",
+      "Enabled": "Sound beim Benutzen abspielen",
+      "Source": "Sound",
+      "FromBoard": "Aus dem Soundboard:",
+      "FromFile": "Eigene Datei:",
+      "Volume": "Lautstärke & Wiedergabe",
+      "Preview": "Probehören",
+      "PreviewStop": "Probe stoppen",
+      "Remove": "Entfernen",
+      "Save": "Speichern",
+      "NoFile": "Bitte zuerst eine Audiodatei wählen.",
+      "Off": "Ausgeschaltet"
     }
   }
 }

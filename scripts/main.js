@@ -145,7 +145,16 @@ async function playSound(tokenDoc, soundId) {
     ui.notifications.warn(t("Notify.NoPermission"));
     return;
   }
+  return startPlay(tokenDoc, entry, entry.id);
+}
 
+/**
+ * Startet einen Sound an einem Token.
+ * @param {TokenDocument} tokenDoc
+ * @param {{name, src, level, loop, duration}} entry
+ * @param {string} key  Kennung – ein erneuter Start mit derselben Kennung ersetzt den alten.
+ */
+async function startPlay(tokenDoc, entry, key) {
   const length = await probeLength(entry.src);
   if (!length) {
     // Datei fehlt oder ist kaputt – lieber Bescheid geben als still nichts tun.
@@ -159,19 +168,94 @@ async function playSound(tokenDoc, soundId) {
   const start = now();
   const play = {
     id: foundry.utils.randomID(),
-    soundId: entry.id,
+    soundId: key,
     name: entry.name,
     src: entry.src,
-    level: entry.level,
-    loop: entry.loop,
+    level: LEVELS.includes(entry.level) ? entry.level : "medium",
+    loop: !!entry.loop,
     start,
     ends: computeEnds(start, entry, length),
     user: game.user.id
   };
 
-  const list = getPlaying(tokenDoc).filter((p) => p.soundId !== entry.id && !isExpired(p));
+  const list = getPlaying(tokenDoc).filter((p) => p.soundId !== key && !isExpired(p));
   list.push(play);
   await setPlaying(tokenDoc, list);
+}
+
+/* -------------------------------------------- */
+/*  Sounds an Aktionen, Zaubern & Gegenständen  */
+/* -------------------------------------------- */
+
+const itemKey = (item) => `item.${item.id}`;
+
+/** Sound-Einstellung eines Gegenstands/Zaubers (oder null). */
+function getItemSound(item) {
+  const raw = item?.getFlag?.(ID, "itemSound");
+  if (!raw || typeof raw !== "object") return null;
+  return {
+    enabled: raw.enabled !== false,
+    source: raw.source === "board" ? "board" : "file",
+    boardId: String(raw.boardId ?? ""),
+    src: String(raw.src ?? ""),
+    level: LEVELS.includes(raw.level) ? raw.level : "medium",
+    loop: !!raw.loop,
+    duration: Math.max(0, Number(raw.duration) || 0)
+  };
+}
+
+/** Darf dieser Benutzer den Sound eines Gegenstands einstellen? */
+function canConfigureItem(item) {
+  if (game.user.isGM) return true;
+  return !!item?.isOwner && setting("playersItemSounds");
+}
+
+/** Welche Datei spielt der Gegenstand ab? (Soundboard-Sound hat Vorrang, falls gewählt.) */
+function resolveItemSound(item, cfg = getItemSound(item)) {
+  if (!cfg?.enabled) return null;
+  let src = cfg.src;
+  if (cfg.source === "board" && item.actor) {
+    const lib = item.actor.getFlag(ID, "sounds");
+    const entry = Array.isArray(lib) ? lib.find((s) => s.id === cfg.boardId) : null;
+    if (entry?.src) src = entry.src;
+  }
+  if (!src) return null;
+  return { name: item.name, src, level: cfg.level, loop: cfg.loop, duration: cfg.duration };
+}
+
+/** Passender Token zum Akteur – bevorzugt auf der aktuellen Szene. */
+function tokenForActor(actor, preferred) {
+  if (!actor) return null;
+  const pref = preferred?.document ?? preferred;
+  if (pref?.actor === actor || (pref && pref.actorId === actor.id && pref.actorLink)) return pref;
+  if (actor.isToken && actor.token) return actor.token;
+  const controlled = canvas.tokens?.controlled?.find((tk) => tk.actor === actor);
+  if (controlled) return controlled.document;
+  const active = actor.getActiveTokens?.(true, true) ?? [];
+  return active.find((td) => td.parent === canvas.scene) ?? active[0] ?? null;
+}
+
+async function playItemSound(item, { token } = {}) {
+  const entry = resolveItemSound(item);
+  if (!entry) return false;
+  const tokenDoc = tokenForActor(item.actor, token);
+  if (!tokenDoc?.isOwner) return false;
+  await startPlay(tokenDoc, entry, itemKey(item));
+  return true;
+}
+
+/** Beim Benutzen einer Aktivität (Angriff, Zauber, Fähigkeit …) den Sound abspielen. */
+function onUseActivity(activity, usageConfig, results) {
+  try {
+    const item = activity?.item;
+    if (!item?.actor || !getItemSound(item)?.enabled) return;
+    const speaker = results?.message?.speaker;
+    const token = speaker?.token ? game.scenes.get(speaker.scene)?.tokens.get(speaker.token) : null;
+    playItemSound(item, { token }).catch((err) => console.error(`${ID} |`, err));
+  } catch (err) {
+    console.error(`${ID} | Sound zur Aktion konnte nicht gestartet werden`, err);
+  }
+  // Nichts zurückgeben: "false" würde dnd5e die weitere Verarbeitung verbieten.
 }
 
 async function stopSound(tokenDoc, soundId) {
@@ -508,9 +592,38 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
       pickFile: SoundboardApp.#onPickFile,
       deleteSound: SoundboardApp.#onDelete,
       addSound: SoundboardApp.#onAdd,
-      stopAll: SoundboardApp.#onStopAll
+      stopAll: SoundboardApp.#onStopAll,
+      toggleItem: SoundboardApp.#onToggleItem,
+      configItem: SoundboardApp.#onConfigItem
     }
   };
+
+  static #item(app, target) {
+    const id = target.closest("[data-item-id]")?.dataset.itemId;
+    return app.tokenDoc.actor?.items.get(id) ?? null;
+  }
+
+  static async #onToggleItem(event, target) {
+    const item = SoundboardApp.#item(this, target);
+    if (!item) return;
+    const key = itemKey(item);
+    const running = getPlaying(this.tokenDoc).some((p) => p.soundId === key && !isExpired(p));
+    target.disabled = true;
+    try {
+      if (running) await stopSound(this.tokenDoc, key);
+      else {
+        const entry = resolveItemSound(item);
+        if (entry && this.tokenDoc.isOwner) await startPlay(this.tokenDoc, entry, key);
+      }
+    } finally {
+      target.disabled = false;
+    }
+  }
+
+  static #onConfigItem(event, target) {
+    const item = SoundboardApp.#item(this, target);
+    if (item) ItemSoundConfig.open(item);
+  }
 
   /** Öffnet das Soundboard für einen Token (oder holt es nach vorne). */
   static open(tokenDoc) {
@@ -595,7 +708,43 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
         </li>`;
     }).join("");
 
-    const empty = `<p class="ats-empty">${esc(t(isGM ? "Board.Empty" : "Board.EmptyPlayer"))}</p>`;
+    // Gegenstände/Zauber mit Sound
+    const actor = td.actor;
+    const canConfig = !!actor && (isGM || (actor.isOwner && setting("playersItemSounds")));
+    const items = (actor?.items ? [...actor.items] : [])
+      .map((item) => ({ item, cfg: getItemSound(item) }))
+      .filter(({ cfg }) => cfg && (cfg.enabled || canConfig))
+      .sort((a, b) => a.item.name.localeCompare(b.item.name));
+
+    const itemRows = items.map(({ item, cfg }) => {
+      const isPlaying = playing.has(itemKey(item));
+      const playable = cfg.enabled && !!resolveItemSound(item, cfg);
+      const info = [
+        t(`Levels.${cfg.level}`),
+        cfg.loop ? t("Board.Loop") : null,
+        cfg.duration ? (DURATIONS.includes(cfg.duration) ? t(`Durations.${cfg.duration}`) : `${cfg.duration} s`) : null
+      ].filter(Boolean).join(" · ");
+      return `
+        <li class="ats-item-row${isPlaying ? " playing" : ""}${cfg.enabled ? "" : " disabled"}" data-item-id="${esc(item.id)}">
+          <button type="button" class="ats-play small" data-action="toggleItem"${playable || isPlaying ? "" : " disabled"} data-tooltip="${esc(t(isPlaying ? "Board.Stop" : "Board.Play"))}">
+            <i class="fa-solid ${isPlaying ? "fa-stop" : "fa-play"}"></i>
+          </button>
+          <img src="${esc(item.img)}" alt="">
+          <span class="ats-item-name">${esc(item.name)}</span>
+          <span class="ats-item-info">${esc(cfg.enabled ? info : t("Item.Off"))}</span>
+          ${canConfig ? `<button type="button" class="ats-icon" data-action="configItem" data-tooltip="${esc(t("Item.Configure"))}"><i class="fa-solid fa-sliders"></i></button>` : ""}
+        </li>`;
+    }).join("");
+
+    const itemSection = itemRows || canConfig
+      ? `<section class="ats-items">
+           <h3><i class="fa-solid fa-wand-sparkles"></i> ${esc(t("Item.Section"))}</h3>
+           ${itemRows ? `<ol class="ats-item-list">${itemRows}</ol>` : ""}
+           ${canConfig ? `<p class="ats-drop-hint"><i class="fa-solid fa-hand-pointer"></i> ${esc(t("Item.DropHint"))}</p>` : ""}
+         </section>`
+      : "";
+
+    const empty = itemSection ? "" : `<p class="ats-empty">${esc(t(isGM ? "Board.Empty" : "Board.EmptyPlayer"))}</p>`;
     const footer = `
       <footer class="ats-footer">
         ${isGM ? `<button type="button" data-action="addSound"><i class="fa-solid fa-plus"></i> ${esc(t("Board.Add"))}</button>` : ""}
@@ -607,16 +756,19 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
         <img src="${esc(td.texture?.src ?? "")}" alt="">
         <p>${esc(t(isGM ? "Board.HintGM" : "Board.HintPlayer"))}</p>
       </header>
-      ${rows ? `<ol class="ats-list">${rows}</ol>` : empty}
+      <div class="ats-scroll">
+        ${rows ? `<ol class="ats-list">${rows}</ol>` : empty}
+        ${itemSection}
+      </div>
       ${footer}`;
   }
 
   _replaceHTML(result, content) {
-    const list = content.querySelector(".ats-list");
-    const scroll = list?.scrollTop ?? 0;
+    const box = content.querySelector(".ats-scroll");
+    const scroll = box?.scrollTop ?? 0;
     content.innerHTML = result;
-    const newList = content.querySelector(".ats-list");
-    if (newList) newList.scrollTop = scroll;
+    const newBox = content.querySelector(".ats-scroll");
+    if (newBox) newBox.scrollTop = scroll;
   }
 
   _onRender(context, options) {
@@ -634,7 +786,8 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
       });
     }
 
-    if (game.user.isGM && !this._dropBound) {
+    const mayDrop = game.user.isGM || (this.tokenDoc.actor?.isOwner && setting("playersItemSounds"));
+    if (mayDrop && !this._dropBound) {
       this._dropBound = true;
       html.addEventListener("dragover", (event) => {
         event.preventDefault();
@@ -659,8 +812,18 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
     } catch (err) {
       try { data = JSON.parse(event.dataTransfer.getData("text/plain")); } catch (e) { data = null; }
     }
-    if (!data?.uuid || !["PlaylistSound", "Playlist"].includes(data.type)) {
-      ui.notifications.warn(t("Notify.DropWrongType"));
+    if (data?.type === "Item" && data.uuid) {
+      const item = await fromUuid(data.uuid);
+      const actor = this.tokenDoc.actor;
+      if (!item || !actor || item.parent !== actor) {
+        ui.notifications.warn(t("Notify.ItemWrongActor"));
+        return;
+      }
+      if (canConfigureItem(item)) ItemSoundConfig.open(item);
+      return;
+    }
+    if (!game.user.isGM || !data?.uuid || !["PlaylistSound", "Playlist"].includes(data.type)) {
+      ui.notifications.warn(t(game.user.isGM ? "Notify.DropWrongType" : "Notify.ItemWrongActor"));
       return;
     }
     const doc = await fromUuid(data.uuid);
@@ -866,6 +1029,283 @@ function toScreen(point) {
   return { x: rect.left + p.x, y: rect.top + p.y };
 }
 
+/* -------------------------------------------- */
+/*  Sound-Einstellung für Aktion / Zauber       */
+/* -------------------------------------------- */
+
+class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
+  static DEFAULT_OPTIONS = {
+    tag: "form",
+    classes: ["ats-item-config"],
+    window: {
+      title: "ATS.Item.Title",
+      icon: "fa-solid fa-music",
+      resizable: false
+    },
+    position: { width: 440, height: "auto" },
+    form: { handler: ItemSoundConfig.#onSubmit, closeOnSubmit: true, submitOnChange: false },
+    actions: {
+      pickFile: ItemSoundConfig.#onPickFile,
+      preview: ItemSoundConfig.#onPreview,
+      setLevel: ItemSoundConfig.#onSetLevel,
+      remove: ItemSoundConfig.#onRemove
+    }
+  };
+
+  static open(item) {
+    if (!canConfigureItem(item)) {
+      ui.notifications.warn(t("Notify.NoPermission"));
+      return null;
+    }
+    const id = `ats-item-sound-${item.uuid.replace(/\./g, "-")}`;
+    const existing = foundry.applications.instances?.get(id);
+    if (existing) {
+      existing.bringToFront?.();
+      return existing;
+    }
+    const app = new ItemSoundConfig({ id, item });
+    app.render({ force: true });
+    return app;
+  }
+
+  constructor(options = {}) {
+    super(options);
+    this.item = options.item;
+    const cfg = getItemSound(this.item);
+    const board = this.boardSounds();
+    this.state = cfg ?? {
+      enabled: true,
+      source: board.length ? "board" : "file",
+      boardId: board[0]?.id ?? "",
+      src: "",
+      level: "medium",
+      loop: false,
+      duration: 0
+    };
+    this.preview = null;
+  }
+
+  get title() {
+    return t("Item.WindowTitle", { name: this.item?.name ?? "" });
+  }
+
+  boardSounds() {
+    const lib = this.item?.actor?.getFlag(ID, "sounds");
+    if (!Array.isArray(lib)) return [];
+    return lib.map(normalizeEntry).filter((s) => s.src && (game.user.isGM || s.shared));
+  }
+
+  /** Aktuelle Werte aus dem Formular übernehmen (ohne zu speichern). */
+  readForm() {
+    const f = this.element;
+    if (!f?.elements) return;
+    const s = this.state;
+    s.enabled = !!f.elements.enabled?.checked;
+    s.source = f.elements.source?.value === "board" ? "board" : "file";
+    s.boardId = f.elements.boardId?.value ?? s.boardId;
+    s.src = (f.elements.src?.value ?? s.src).trim();
+    s.loop = !!f.elements.loop?.checked;
+    s.duration = Math.max(0, Number(f.elements.duration?.value) || 0);
+  }
+
+  async _renderHTML() {
+    const s = this.state;
+    const board = this.boardSounds();
+    const units = canvas.scene?.grid?.units || "ft";
+
+    const levels = LEVELS.map((lv) => {
+      const tip = `${t(`Levels.${lv}`)} – ${t("Board.Range", { range: rangeFor(lv), units })}`;
+      return `<button type="button" class="ats-level${s.level === lv ? " active" : ""}" data-action="setLevel" data-level="${lv}" data-tooltip="${esc(tip)}">${esc(t(`Levels.${lv}`))}</button>`;
+    }).join("");
+
+    const durations = DURATIONS.map((d) => `<option value="${d}"${s.duration === d ? " selected" : ""}>${esc(t(`Durations.${d}`))}</option>`);
+    if (!DURATIONS.includes(s.duration)) durations.push(`<option value="${s.duration}" selected>${s.duration} s</option>`);
+
+    const boardOptions = board.map((b) => `<option value="${esc(b.id)}"${s.boardId === b.id ? " selected" : ""}>${esc(b.name)}</option>`).join("");
+    const useBoard = s.source === "board" && board.length;
+
+    return `
+      <header class="ats-head">
+        <img src="${esc(this.item.img)}" alt="">
+        <p>${esc(t("Item.Hint"))}</p>
+      </header>
+
+      <label class="ats-check">
+        <input type="checkbox" name="enabled"${s.enabled ? " checked" : ""}>
+        ${esc(t("Item.Enabled"))}
+      </label>
+
+      <fieldset>
+        <legend>${esc(t("Item.Source"))}</legend>
+        ${board.length ? `
+          <label class="ats-radio">
+            <input type="radio" name="source" value="board"${useBoard ? " checked" : ""}>
+            ${esc(t("Item.FromBoard"))}
+            <select name="boardId">${boardOptions}</select>
+          </label>` : ""}
+        <label class="ats-radio">
+          <input type="radio" name="source" value="file"${useBoard ? "" : " checked"}>
+          ${esc(t("Item.FromFile"))}
+        </label>
+        <div class="ats-file">
+          <input type="text" name="src" value="${esc(s.src)}" placeholder="sounds/…">
+          <button type="button" class="ats-icon" data-action="pickFile" data-tooltip="${esc(t("Board.PickFile"))}"><i class="fa-solid fa-file-audio"></i></button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>${esc(t("Item.Volume"))}</legend>
+        <div class="ats-levels">${levels}</div>
+        <div class="ats-options">
+          <label class="ats-check"><input type="checkbox" name="loop"${s.loop ? " checked" : ""}> <i class="fa-solid fa-repeat"></i> ${esc(t("Board.Loop"))}</label>
+          <label class="ats-duration">
+            <i class="fa-solid fa-hourglass-half"></i> ${esc(t("Board.Duration"))}
+            <select name="duration">${durations.join("")}</select>
+          </label>
+        </div>
+      </fieldset>
+
+      <footer class="ats-footer">
+        <button type="button" data-action="preview"><i class="fa-solid ${this.preview ? "fa-stop" : "fa-headphones"}"></i> ${esc(t(this.preview ? "Item.PreviewStop" : "Item.Preview"))}</button>
+        ${getItemSound(this.item) ? `<button type="button" data-action="remove"><i class="fa-solid fa-trash"></i> ${esc(t("Item.Remove"))}</button>` : ""}
+        <button type="submit"><i class="fa-solid fa-floppy-disk"></i> ${esc(t("Item.Save"))}</button>
+      </footer>`;
+  }
+
+  _replaceHTML(result, content) {
+    content.innerHTML = result;
+  }
+
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    // Auswahl im Soundboard-Menü oder Tippen eines Pfads wählt automatisch die passende Quelle.
+    this.element.querySelector("[name=boardId]")?.addEventListener("change", () => {
+      const r = this.element.querySelector("[name=source][value=board]");
+      if (r) r.checked = true;
+    });
+    this.element.querySelector("[name=src]")?.addEventListener("input", () => {
+      const r = this.element.querySelector("[name=source][value=file]");
+      if (r) r.checked = true;
+    });
+  }
+
+  async close(options) {
+    this.stopPreview();
+    return super.close(options);
+  }
+
+  currentSrc() {
+    this.readForm();
+    const s = this.state;
+    if (s.source === "board") return this.boardSounds().find((b) => b.id === s.boardId)?.src ?? "";
+    return s.src;
+  }
+
+  stopPreview() {
+    const p = this.preview;
+    this.preview = null;
+    if (!p) return;
+    try { p.stop(); } catch (e) { /* egal */ }
+  }
+
+  static async #onPreview() {
+    if (this.preview) {
+      this.stopPreview();
+      return this.render();
+    }
+    const src = this.currentSrc();
+    if (!src) return ui.notifications.warn(t("Item.NoFile"));
+    try {
+      const sound = new foundry.audio.Sound(src, { context: game.audio.environment });
+      await sound.load();
+      await sound.play({ volume: LEVEL_GAIN[this.state.level] ?? 0.75 });
+      this.preview = sound;
+      sound.addEventListener?.("end", () => {
+        if (this.preview === sound) {
+          this.preview = null;
+          if (this.rendered) this.render();
+        }
+      }, { once: true });
+    } catch (err) {
+      ui.notifications.error(t("Notify.LoadFailed", { src }));
+    }
+    this.render();
+  }
+
+  static #onSetLevel(event, target) {
+    this.readForm();
+    this.state.level = target.dataset.level;
+    for (const b of this.element.querySelectorAll(".ats-level")) b.classList.toggle("active", b === target);
+  }
+
+  static #onPickFile() {
+    this.readForm();
+    const FP = foundry.applications.apps?.FilePicker?.implementation ?? globalThis.FilePicker;
+    new FP({
+      type: "audio",
+      current: this.state.src,
+      callback: (path) => {
+        this.state.src = path;
+        this.state.source = "file";
+        this.render();
+      }
+    }).render(true);
+  }
+
+  static async #onRemove() {
+    this.stopPreview();
+    await this.item.unsetFlag(ID, "itemSound");
+    this.close();
+  }
+
+  static async #onSubmit() {
+    this.readForm();
+    const s = this.state;
+    if (s.source === "file" && !s.src) return ui.notifications.warn(t("Item.NoFile"));
+    await this.item.setFlag(ID, "itemSound", {
+      enabled: s.enabled,
+      source: s.source,
+      boardId: s.boardId,
+      src: s.src,
+      level: s.level,
+      loop: s.loop,
+      duration: s.duration
+    });
+  }
+}
+
+/** Noten-Knopf in der Titelleiste von Gegenstands- und Zauberbögen. */
+function onRenderItemSheet(app) {
+  const item = app?.document ?? app?.item;
+  if (item?.documentName !== "Item" || !canConfigureItem(item)) return;
+  const header = app.window?.header ?? app.element?.querySelector?.(".window-header");
+  if (!header || header.querySelector(".ats-item-header")) return;
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "header-control icon fa-solid fa-music ats-item-header";
+  btn.dataset.tooltip = t("Item.Configure");
+  btn.setAttribute("aria-label", t("Item.Configure"));
+  if (getItemSound(item)?.enabled) btn.classList.add("active");
+  btn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    ItemSoundConfig.open(item);
+  });
+
+  const anchor = header.querySelector("[data-action='toggleControls'], [data-action='close']");
+  if (anchor) anchor.before(btn);
+  else header.append(btn);
+}
+
+function refreshItemHeaders(item) {
+  for (const app of foundry.applications.instances?.values() ?? []) {
+    if (app.document !== item) continue;
+    const btn = app.window?.header?.querySelector(".ats-item-header");
+    if (btn) btn.classList.toggle("active", !!getItemSound(item)?.enabled);
+  }
+}
+
 function rerenderBoards(doc) {
   for (const app of foundry.applications.instances?.values() ?? []) {
     if (app instanceof SoundboardApp && app.concerns(doc)) app.render();
@@ -879,21 +1319,53 @@ function closeBoardsFor(tokenDoc) {
 }
 
 /* -------------------------------------------- */
-/*  Button im Token-HUD (linke Spalte)          */
+/*  Button im Token-HUD (oben mittig)           */
 /* -------------------------------------------- */
+
+/** Hat dieser Token für den aktuellen Benutzer etwas im Soundboard? */
+function hasBoardContent(tokenDoc) {
+  if (game.user.isGM) return true;
+  if (visibleSounds(tokenDoc).length) return true;
+  const actor = tokenDoc.actor;
+  if (!actor?.isOwner) return false;
+  if (setting("playersItemSounds")) return true;
+  return actor.items.some((item) => getItemSound(item)?.enabled);
+}
+
+/** Abstand eines Elements zur Oberkante von "root" in CSS-Pixeln (ohne Zoom). */
+function offsetTopWithin(el, root) {
+  let top = 0;
+  let node = el;
+  while (node && node !== root) {
+    top += node.offsetTop;
+    node = node.offsetParent;
+  }
+  return node === root ? top : null;
+}
+
+/** Setzt den Button mittig über den Token – und über die obere Leiste, falls sie sichtbar ist. */
+function placeTopButton(root, btn) {
+  const gap = 6;
+  const h = btn.offsetHeight || 36;
+  let top = -h - gap;
+  const bar = root.querySelector(".col.middle .bar2, .col.middle .attribute.top, .col.middle .attribute:first-child");
+  if (bar && bar.offsetParent && getComputedStyle(bar).display !== "none") {
+    const barTop = offsetTopWithin(bar, root);
+    if (barTop !== null && barTop - h - gap < top) top = barTop - h - gap;
+  }
+  btn.style.top = `${top}px`;
+}
 
 function onRenderTokenHUD(hud, html) {
   const root = hud?.element ?? (html instanceof HTMLElement ? html : html?.[0]);
   const tokenDoc = hud?.object?.document ?? hud?.document;
   if (!root || !tokenDoc) return;
-  if (!game.user.isGM && !visibleSounds(tokenDoc).length) return;
-
-  const col = root.querySelector(".col.left");
-  if (!col || root.querySelector("[data-ats-action='soundboard']")) return;
+  if (!hasBoardContent(tokenDoc)) return;
+  if (root.querySelector("[data-ats-action='soundboard']")) return;
 
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.className = "control-icon ats-hud-button";
+  btn.className = "control-icon ats-hud-button thf-ignore";
   btn.dataset.atsAction = "soundboard";
   btn.dataset.tooltip = t("HUD.Tooltip");
   btn.innerHTML = `<i class="fa-solid fa-music"></i>`;
@@ -903,7 +1375,9 @@ function onRenderTokenHUD(hud, html) {
     event.stopPropagation();
     SoundboardApp.open(tokenDoc);
   });
-  col.append(btn);
+  root.append(btn);
+  placeTopButton(root, btn);
+  requestAnimationFrame(() => btn.isConnected && placeTopButton(root, btn));
 }
 
 function refreshHUDButton(tokenDoc) {
@@ -911,7 +1385,7 @@ function refreshHUDButton(tokenDoc) {
   if (!hud?.rendered || hud.object?.document !== tokenDoc) return;
   const btn = hud.element?.querySelector("[data-ats-action='soundboard']");
   if (btn) btn.classList.toggle("active", getPlaying(tokenDoc).some((p) => !isExpired(p)));
-  else if (game.user.isGM || visibleSounds(tokenDoc).length) hud.render();
+  else if (hasBoardContent(tokenDoc)) hud.render();
 }
 
 /* -------------------------------------------- */
@@ -976,6 +1450,15 @@ Hooks.once("init", () => {
     default: true,
     onChange: (on) => (on ? Notes.wake() : Notes.clear())
   });
+
+  game.settings.register(ID, "playersItemSounds", {
+    name: "ATS.Settings.PlayersItemSounds.Name",
+    hint: "ATS.Settings.PlayersItemSounds.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
+  });
 });
 
 Hooks.once("ready", () => {
@@ -987,12 +1470,29 @@ Hooks.once("ready", () => {
       open: (token) => SoundboardApp.open(token?.document ?? token),
       play: (token, soundId) => playSound(token?.document ?? token, soundId),
       stop: (token, soundId) => stopSound(token?.document ?? token, soundId),
-      stopAll: (token) => stopAll(token?.document ?? token)
+      stopAll: (token) => stopAll(token?.document ?? token),
+      playItem: (item, token) => playItemSound(item, { token }),
+      configureItem: (item) => ItemSoundConfig.open(item)
     };
   }
 });
 
 Hooks.on("renderTokenHUD", onRenderTokenHUD);
+
+Hooks.on("dnd5e.postUseActivity", onUseActivity);
+Hooks.on("renderItemSheet5e", onRenderItemSheet);
+Hooks.on("renderItemSheetV2", onRenderItemSheet);
+
+function onItemChanged(item) {
+  refreshItemHeaders(item);
+  if (item.parent?.documentName === "Actor") {
+    rerenderBoards(item.parent);
+    for (const token of item.parent.getActiveTokens?.(false, true) ?? []) refreshHUDButton(token);
+  }
+}
+Hooks.on("updateItem", onItemChanged);
+Hooks.on("createItem", onItemChanged);
+Hooks.on("deleteItem", onItemChanged);
 
 Hooks.on("canvasReady", () => Engine.sync());
 Hooks.on("canvasTearDown", () => {
