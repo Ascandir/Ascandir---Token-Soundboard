@@ -31,8 +31,9 @@
       "Name": "Name",
       "Playing": "Playing",
       "LoopNextHint": "Volume, duration and loop can also be changed while the sound is playing.",
-      "DropHintGM": "Drop here: playlist sounds or files from the file browser create new sounds. Drop weapons, spells and actions onto a sound to attach them.",
-      "DropHintPlayer": "Drop weapons, spells and actions onto a sound to attach them."
+      "DropHintGM": "Drop here: audio files from your computer, playlist sounds or files from the file browser create new sounds. Drop weapons, spells and actions onto a sound to attach them.",
+      "DropHintPlayer": "Drop weapons, spells and actions onto a sound to attach them.",
+      "HintPlayerOwn": "Upload your own sounds or drag them here, set them up and attach them to your weapons, spells or actions. Others only hear them near your token."
     },
     "Durations": {
       "0": "No limit",
@@ -51,7 +52,12 @@
       "LoadFailed": "The sound could not be loaded: {src}",
       "Added": "Sound added: {name}",
       "DropWrongType": "That can't be dropped here. Allowed are sounds (playlist, file browser) and this character's weapons, spells and actions.",
-      "ItemWrongActor": "You can only drop items, spells or features of this character here."
+      "ItemWrongActor": "You can only drop items, spells or features of this character here.",
+      "DropFailed": "Something went wrong while dropping.",
+      "NoAddPermission": "You may not add your own sounds to this token. The GM can allow this in the module settings.",
+      "NoLinkPermission": "You may not attach sounds to weapons, spells or actions. The GM can allow this in the module settings.",
+      "DropOnSound": "Drop the weapon, spell or action directly onto a sound to attach it.",
+      "AddedMany": "{count} sounds added."
     },
     "Settings": {
       "Range": {
@@ -79,7 +85,11 @@
       },
       "PlayersItemSounds": {
         "Name": "Players may attach sounds to their own actions",
-        "Hint": "When off, only the GM can attach sounds to actions, spells and items. Players still hear and see the configured sounds."
+        "Hint": "Players can attach sounds from their character's soundboard to weapons, spells and actions without being allowed to upload sounds themselves."
+      },
+      "PlayersOwnSounds": {
+        "Name": "Players may upload their own sounds",
+        "Hint": "Players can upload or choose sounds on their own tokens/characters, set them up and attach them to their weapons, spells and actions. They may rename and delete sounds they added. Uploading also requires the Foundry permission “Upload new files” (Game Settings → Permissions)."
       }
     },
     "Item": {
@@ -116,6 +126,14 @@
       "LinkedTo": "→ {name}",
       "OwnSound": "own file",
       "NoItems": "This character has no matching entries."
+    },
+    "Add": {
+      "Upload": "Upload from computer",
+      "Browse": "Choose from Foundry files",
+      "Hint": "Where should the sound come from? You can also drag audio files from your computer straight onto the soundboard.",
+      "NoUploadRight": "You lack the Foundry permission “Upload new files”. The GM can grant it to players under Game Settings → Permissions.",
+      "TooLarge": "{name} is too large (at most {max} MB).",
+      "UploadFailed": "{name} could not be uploaded."
     }
   }
 }

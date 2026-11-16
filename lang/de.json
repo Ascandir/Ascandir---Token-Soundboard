@@ -31,8 +31,9 @@
       "Name": "Name",
       "Playing": "Läuft",
       "LoopNextHint": "Lautstärke, Dauer und Wiederholung kannst du auch ändern, während der Sound läuft.",
-      "DropHintGM": "Hierher ziehen: Sounds aus Playlists oder dem Dateibrowser legen neue Sounds an. Waffen, Zauber und Aktionen auf einen Sound ziehen, um sie anzuheften.",
-      "DropHintPlayer": "Waffen, Zauber und Aktionen auf einen Sound ziehen, um sie anzuheften."
+      "DropHintGM": "Hierher ziehen: Audiodateien von deinem Computer, Sounds aus Playlists oder dem Dateibrowser legen neue Sounds an. Waffen, Zauber und Aktionen auf einen Sound ziehen, um sie anzuheften.",
+      "DropHintPlayer": "Waffen, Zauber und Aktionen auf einen Sound ziehen, um sie anzuheften.",
+      "HintPlayerOwn": "Lade eigene Sounds hoch oder zieh sie hierher, stelle sie ein und hefte sie an deine Waffen, Zauber oder Aktionen. Andere hören sie nur in der Nähe deines Tokens."
     },
     "Durations": {
       "0": "Ohne Limit",
@@ -51,7 +52,12 @@
       "LoadFailed": "Der Sound konnte nicht geladen werden: {src}",
       "Added": "Sound hinzugefügt: {name}",
       "DropWrongType": "Das kann hier nicht abgelegt werden. Erlaubt sind Sounds (Playlist, Dateibrowser) sowie Waffen, Zauber und Aktionen dieses Charakters.",
-      "ItemWrongActor": "Hier kannst du nur Gegenstände, Zauber oder Fähigkeiten dieses Charakters ablegen."
+      "ItemWrongActor": "Hier kannst du nur Gegenstände, Zauber oder Fähigkeiten dieses Charakters ablegen.",
+      "DropFailed": "Beim Ablegen ist ein Fehler aufgetreten.",
+      "NoAddPermission": "Du darfst an diesem Token keine eigenen Sounds anlegen. Der Spielleiter kann das in den Moduleinstellungen freigeben.",
+      "NoLinkPermission": "Du darfst keine Sounds an Waffen, Zauber oder Aktionen heften. Der Spielleiter kann das in den Moduleinstellungen freigeben.",
+      "DropOnSound": "Zieh die Waffe, den Zauber oder die Aktion direkt auf einen Sound, um ihn anzuheften.",
+      "AddedMany": "{count} Sounds hinzugefügt."
     },
     "Settings": {
       "Range": {
@@ -78,8 +84,12 @@
         "Hint": "Von einem Token, der gerade einen Sound abspielt, steigen kleine Noten auf. Je lauter die Stufe, desto mehr Noten. Unsichtbare oder versteckte Token zeigen keine Noten."
       },
       "PlayersItemSounds": {
-        "Name": "Spieler dürfen Sounds an eigene Aktionen hängen",
-        "Hint": "Ist das aus, kann nur der Spielleiter Sounds an Aktionen, Zauber und Gegenstände hängen. Spieler hören und sehen die eingestellten Sounds trotzdem."
+        "Name": "Spieler dürfen Sounds an eigene Aktionen heften",
+        "Hint": "Spieler können Sounds aus dem Soundboard ihres Charakters an Waffen, Zauber und Aktionen heften, ohne selbst Sounds hochladen zu dürfen."
+      },
+      "PlayersOwnSounds": {
+        "Name": "Spieler dürfen eigene Sounds hochladen",
+        "Hint": "Spieler können an ihren eigenen Token/Charakteren Sounds hochladen oder auswählen, einstellen und an ihre Waffen, Zauber und Aktionen heften. Selbst angelegte Sounds dürfen sie umbenennen und löschen. Zum Hochladen braucht der Spieler zusätzlich das Foundry-Recht „Dateien hochladen“ (Spieleinstellungen → Berechtigungen)."
       }
     },
     "Item": {
@@ -116,6 +126,14 @@
       "LinkedTo": "→ {name}",
       "OwnSound": "eigene Datei",
       "NoItems": "Dieser Charakter hat keine passenden Einträge."
+    },
+    "Add": {
+      "Upload": "Vom Computer hochladen",
+      "Browse": "Aus Foundry-Dateien wählen",
+      "Hint": "Woher soll der Sound kommen? Du kannst Audiodateien auch direkt von deinem Computer ins Soundboard ziehen.",
+      "NoUploadRight": "Dir fehlt in Foundry das Recht „Dateien hochladen“. Der Spielleiter kann es unter Spieleinstellungen → Berechtigungen für Spieler freigeben.",
+      "TooLarge": "{name} ist zu groß (höchstens {max} MB).",
+      "UploadFailed": "{name} konnte nicht hochgeladen werden."
     }
   }
 }

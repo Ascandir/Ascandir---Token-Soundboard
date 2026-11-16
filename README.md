@@ -43,7 +43,23 @@ Standardmäßig darf nur der Spielleiter anheften. Mit der Einstellung **„Spie
 
 ## Sounds hinzufügen
 
-Neue Sounds legst du als Spielleiter mit **Sound hinzufügen** an oder ziehst sie ins Soundboard: einzelne Sounds oder ganze Playlists aus der Playlist-Leiste sowie Audiodateien aus dem Dateibrowser.
+Neue Sounds legst du mit **Sound hinzufügen** an oder ziehst sie ins Soundboard:
+
+- Audiodateien direkt von deinem Computer (werden automatisch hochgeladen)
+- einzelne Sounds oder ganze Playlists aus der Playlist-Leiste
+- Audiodateien aus dem Foundry-Dateibrowser
+
+Hochgeladene Dateien landen im Foundry-Datenordner unter `ascandir-token-soundboard/<Akteur-ID>/`.
+
+## Spieler mit eigenen Sounds
+
+Mit der Einstellung **„Spieler dürfen eigene Sounds hochladen“** können Spieler an ihren eigenen Charakteren:
+
+- Sounds hochladen (über **Sound hinzufügen** oder durch Ziehen vom Computer) oder aus den Foundry-Dateien wählen,
+- sie einstellen und an ihre Waffen, Zauber und Aktionen heften,
+- selbst angelegte Sounds umbenennen, austauschen und löschen.
+
+Sounds des Spielleiters können Spieler nicht umbenennen oder löschen. Zum Hochladen braucht der Spieler zusätzlich das Foundry-Recht **„Dateien hochladen“** (Spieleinstellungen → Berechtigungen).
 
 ## Reichweiten (Standard)
 

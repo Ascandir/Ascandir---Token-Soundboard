@@ -64,8 +64,21 @@ function normalizeEntry(e) {
     shared: !!e.shared,
     level: LEVELS.includes(e.level) ? e.level : "medium",
     loop: !!e.loop,
-    duration: Math.max(0, Number(e.duration) || 0)
+    duration: Math.max(0, Number(e.duration) || 0),
+    addedBy: e.addedBy ? String(e.addedBy) : null
   };
+}
+
+/** Darf dieser Benutzer an diesem Token eigene Sounds anlegen (hochladen, auswählen, ablegen)? */
+function canAddSounds(tokenDoc) {
+  if (game.user.isGM) return true;
+  return !!libDoc(tokenDoc)?.isOwner && !!setting("playersOwnSounds");
+}
+
+/** Darf dieser Benutzer einen Sound umbenennen, die Datei tauschen oder ihn löschen? */
+function canEditEntry(tokenDoc, entry) {
+  if (game.user.isGM) return true;
+  return canAddSounds(tokenDoc) && entry?.addedBy === game.user.id;
 }
 
 function getLibrary(tokenDoc) {
@@ -207,7 +220,7 @@ function getItemSound(item) {
 /** Darf dieser Benutzer den Sound eines Gegenstands einstellen? */
 function canConfigureItem(item) {
   if (game.user.isGM) return true;
-  return !!item?.isOwner && setting("playersItemSounds");
+  return !!item?.isOwner && (!!setting("playersItemSounds") || !!setting("playersOwnSounds"));
 }
 
 /** Soundboard-Eintrag des Akteurs, an den ein Gegenstand geheftet ist (oder null). */
@@ -360,10 +373,13 @@ async function removePlay(tokenDoc, playId) {
 
 async function updateEntry(tokenDoc, soundId, patch) {
   if (!game.user.isGM) {
-    // Spieler dürfen nur Lautstärke, Dauer und Wiederholung ändern – und nur bei freigegebenen Sounds.
+    // Spieler: Lautstärke, Dauer und Wiederholung bei freigegebenen Sounds;
+    // bei selbst angelegten Sounds zusätzlich Name und Datei.
     const entry = getLibrary(tokenDoc).find((s) => s.id === soundId);
     if (!entry?.shared || !tokenDoc.isOwner) return;
-    patch = Object.fromEntries(Object.entries(patch).filter(([k]) => ["level", "loop", "duration"].includes(k)));
+    const allowed = ["level", "loop", "duration"];
+    if (canEditEntry(tokenDoc, entry)) allowed.push("name", "src");
+    patch = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
   }
   if (!Object.keys(patch).length) return;
 
@@ -390,15 +406,25 @@ async function updateEntry(tokenDoc, soundId, patch) {
 }
 
 async function addEntries(tokenDoc, entries) {
-  if (!game.user.isGM || !entries.length) return;
+  if (!canAddSounds(tokenDoc) || !entries.length) return;
   const lib = getLibrary(tokenDoc);
-  for (const e of entries) lib.push(normalizeEntry(e));
+  for (const e of entries) {
+    // Von Spielern angelegte Sounds sind sofort für die Besitzer freigegeben.
+    const extra = game.user.isGM ? {} : { shared: true, addedBy: game.user.id };
+    lib.push(normalizeEntry({ ...e, ...extra, id: undefined }));
+  }
   await setLibrary(tokenDoc, lib);
-  if (entries.length === 1) ui.notifications.info(t("Notify.Added", { name: entries[0].name }));
+  ui.notifications.info(entries.length === 1
+    ? t("Notify.Added", { name: entries[0].name })
+    : t("Notify.AddedMany", { count: entries.length }));
 }
 
 async function deleteEntry(tokenDoc, soundId) {
-  if (!game.user.isGM) return;
+  const entry = getLibrary(tokenDoc).find((s) => s.id === soundId);
+  if (!canEditEntry(tokenDoc, entry)) return;
+  for (const item of linkedItems(tokenDoc.actor, soundId)) {
+    if (canConfigureItem(item)) await item.unsetFlag(ID, "itemSound");
+  }
   await stopSound(tokenDoc, soundId);
   await setLibrary(tokenDoc, getLibrary(tokenDoc).filter((s) => s.id !== soundId));
 }
@@ -732,6 +758,126 @@ async function soundsFromDrop(data) {
 }
 
 /* -------------------------------------------- */
+/*  Dateien wählen & hochladen                  */
+/* -------------------------------------------- */
+
+const FilePickerImpl = () => foundry.applications.apps?.FilePicker?.implementation ?? globalThis.FilePicker;
+const MAX_UPLOAD_MB = 25;
+
+function openAudioPicker(callback, current = "") {
+  new (FilePickerImpl())({ type: "audio", current, callback }).render(true);
+}
+
+/** Öffnet die Dateiauswahl des Computers und liefert die gewählten Audiodateien. */
+function chooseLocalFiles({ multiple = true } = {}) {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "audio/*,.mp3,.ogg,.oga,.opus,.wav,.flac,.webm,.m4a,.aac";
+    input.multiple = multiple;
+    input.style.display = "none";
+    input.addEventListener("change", () => {
+      resolve([...(input.files ?? [])]);
+      input.remove();
+    }, { once: true });
+    input.addEventListener("cancel", () => {
+      resolve([]);
+      input.remove();
+    }, { once: true });
+    document.body.append(input);
+    input.click();
+  });
+}
+
+/** Lädt eine Audiodatei in den Ordner des Akteurs hoch und gibt den Pfad zurück. */
+async function uploadAudio(tokenDoc, file) {
+  if (!game.user.isGM && !game.user.can("FILES_UPLOAD")) {
+    ui.notifications.warn(t("Add.NoUploadRight"));
+    return null;
+  }
+  if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+    ui.notifications.warn(t("Add.TooLarge", { name: file.name, max: MAX_UPLOAD_MB }));
+    return null;
+  }
+  const FP = FilePickerImpl();
+  const actorId = libDoc(tokenDoc)?.id ?? "allgemein";
+  const base = ID;
+  const folder = `${base}/${actorId}`;
+  for (const dir of [base, folder]) {
+    try { await FP.createDirectory("data", dir, {}); } catch (e) { /* existiert schon */ }
+  }
+  // Sicherer Dateiname (keine Sonderzeichen, eindeutig)
+  const dot = file.name.lastIndexOf(".");
+  const stem = (dot > 0 ? file.name.slice(0, dot) : file.name).normalize("NFKD").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") || "sound";
+  const ext = dot > 0 ? file.name.slice(dot).toLowerCase() : ".mp3";
+  const named = new File([file], `${stem}-${foundry.utils.randomID(4)}${ext}`, { type: file.type });
+  try {
+    const result = await FP.upload("data", folder, named, {}, { notify: false });
+    const path = result?.path ?? (result?.status === "success" ? `${folder}/${named.name}` : null);
+    if (!path) throw new Error(result?.message ?? "Upload fehlgeschlagen");
+    return path;
+  } catch (err) {
+    console.error(`${ID} | Hochladen fehlgeschlagen`, err);
+    ui.notifications.error(t("Add.UploadFailed", { name: file.name }));
+    return null;
+  }
+}
+
+async function uploadAndAdd(tokenDoc, files) {
+  const entries = [];
+  for (const file of files) {
+    const path = await uploadAudio(tokenDoc, file);
+    if (path) entries.push({ name: nameFromPath(file.name), src: path });
+  }
+  if (entries.length) await addEntries(tokenDoc, entries);
+}
+
+/* -------------------------------------------- */
+/*  Globaler Abfänger für Ziehen & Ablegen      */
+/* -------------------------------------------- */
+
+/**
+ * Hört ganz oben (window, Capture-Phase) mit – vor allen anderen Modulen.
+ * Liegt die Maus über einem Soundboard-Fenster, übernehmen wir das Ablegen.
+ */
+function installDropCatcher() {
+  const boardAt = (event) => {
+    const el = event.target?.closest?.(".ats-soundboard");
+    if (!el) return null;
+    const app = foundry.applications.instances?.get(el.id);
+    return app instanceof SoundboardApp ? { app, el } : null;
+  };
+  const clearMarks = () => {
+    for (const el of document.querySelectorAll(".ats-soundboard.ats-drag")) el.classList.remove("ats-drag");
+    for (const el of document.querySelectorAll(".ats-drop-target")) el.classList.remove("ats-drop-target");
+  };
+  const over = (event) => {
+    const hit = boardAt(event);
+    if (!hit) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    hit.el.classList.add("ats-drag");
+    const row = event.target.closest?.(".ats-row");
+    for (const r of hit.el.querySelectorAll(".ats-drop-target")) if (r !== row) r.classList.remove("ats-drop-target");
+    row?.classList.add("ats-drop-target");
+  };
+  window.addEventListener("dragenter", over, true);
+  window.addEventListener("dragover", over, true);
+  window.addEventListener("dragleave", (event) => {
+    if (!event.relatedTarget || !event.relatedTarget.closest?.(".ats-soundboard")) clearMarks();
+  }, true);
+  window.addEventListener("dragend", clearMarks, true);
+  window.addEventListener("drop", (event) => {
+    const hit = boardAt(event);
+    clearMarks();
+    if (!hit) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    hit.app.handleDrop(event);
+  }, true);
+}
+
+/* -------------------------------------------- */
 /*  Soundboard-Fenster                          */
 /* -------------------------------------------- */
 
@@ -861,13 +1007,14 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
       const durations = DURATIONS.map((d) => `<option value="${d}"${s.duration === d ? " selected" : ""}>${esc(t(`Durations.${d}`))}</option>`);
       if (!DURATIONS.includes(s.duration)) durations.push(`<option value="${s.duration}" selected>${s.duration} s</option>`);
 
-      const name = isGM
+      const editable = canEditEntry(td, s);
+      const name = editable
         ? `<input type="text" class="ats-name" data-field="name" value="${esc(s.name)}" placeholder="${esc(t("Board.Name"))}">`
         : `<span class="ats-name">${esc(s.name)}</span>`;
 
-      const gmTools = isGM
+      const gmTools = editable
         ? `<div class="ats-gm-tools">
-             <button type="button" class="ats-icon${s.shared ? " active" : ""}" data-action="toggleShared" data-tooltip="${esc(t(s.shared ? "Board.Shared" : "Board.NotShared"))}"><i class="fa-solid ${s.shared ? "fa-user-check" : "fa-user-lock"}"></i></button>
+             ${isGM ? `<button type="button" class="ats-icon${s.shared ? " active" : ""}" data-action="toggleShared" data-tooltip="${esc(t(s.shared ? "Board.Shared" : "Board.NotShared"))}"><i class="fa-solid ${s.shared ? "fa-user-check" : "fa-user-lock"}"></i></button>` : ""}
              <button type="button" class="ats-icon" data-action="pickFile" data-tooltip="${esc(`${t("Board.PickFile")}: ${s.src}`)}"><i class="fa-solid fa-file-audio"></i></button>
              <button type="button" class="ats-icon ats-danger" data-action="deleteSound" data-tooltip="${esc(t("Board.Delete"))}"><i class="fa-solid fa-trash"></i></button>
            </div>`
@@ -934,21 +1081,22 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
          </section>`
       : "";
 
-    const dropHint = isGM || canConfig
-      ? `<p class="ats-drop-hint"><i class="fa-solid fa-hand-pointer"></i> ${esc(t(isGM ? "Board.DropHintGM" : "Board.DropHintPlayer"))}</p>`
+    const mayAdd = canAddSounds(td);
+    const dropHint = mayAdd || canConfig
+      ? `<p class="ats-drop-hint"><i class="fa-solid fa-hand-pointer"></i> ${esc(t(mayAdd ? "Board.DropHintGM" : "Board.DropHintPlayer"))}</p>`
       : "";
 
-    const empty = rows || itemSection ? "" : `<p class="ats-empty">${esc(t(isGM ? "Board.Empty" : "Board.EmptyPlayer"))}</p>`;
+    const empty = rows || itemSection ? "" : `<p class="ats-empty">${esc(t(canAddSounds(td) ? "Board.Empty" : "Board.EmptyPlayer"))}</p>`;
     const footer = `
       <footer class="ats-footer">
-        ${isGM ? `<button type="button" data-action="addSound"><i class="fa-solid fa-plus"></i> ${esc(t("Board.Add"))}</button>` : ""}
+        ${canAddSounds(td) ? `<button type="button" data-action="addSound"><i class="fa-solid fa-plus"></i> ${esc(t("Board.Add"))}</button>` : ""}
         <button type="button" data-action="stopAll"${playing.size ? "" : " disabled"}><i class="fa-solid fa-volume-xmark"></i> ${esc(t("Board.StopAll"))}</button>
       </footer>`;
 
     return `
       <header class="ats-head">
         <img src="${esc(td.texture?.src ?? "")}" alt="">
-        <p>${esc(t(isGM ? "Board.HintGM" : "Board.HintPlayer"))}</p>
+        <p>${esc(t(isGM ? "Board.HintGM" : canAddSounds(td) ? "Board.HintPlayerOwn" : "Board.HintPlayer"))}</p>
       </header>
       <div class="ats-scroll">
         ${rows ? `<ol class="ats-list">${rows}</ol>` : empty}
@@ -981,53 +1129,46 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
       });
     }
 
-    const mayDrop = game.user.isGM || (this.tokenDoc.actor?.isOwner && setting("playersItemSounds"));
-    if (mayDrop && !this._dropBound) {
-      this._dropBound = true;
-      // Capture-Phase: wir bekommen das Ablegen, bevor andere Elemente im Fenster es abfangen.
-      const allow = (event) => {
-        event.preventDefault();
-        html.classList.add("ats-drag");
-        for (const row of html.querySelectorAll(".ats-row.ats-drop-target")) row.classList.remove("ats-drop-target");
-        event.target.closest?.(".ats-row")?.classList.add("ats-drop-target");
-      };
-      html.addEventListener("dragenter", allow, true);
-      html.addEventListener("dragover", allow, true);
-      html.addEventListener("dragleave", (event) => {
-        if (html.contains(event.relatedTarget)) return;
-        html.classList.remove("ats-drag");
-        for (const row of html.querySelectorAll(".ats-drop-target")) row.classList.remove("ats-drop-target");
-      }, true);
-      html.addEventListener("drop", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        html.classList.remove("ats-drag");
-        for (const row of html.querySelectorAll(".ats-drop-target")) row.classList.remove("ats-drop-target");
-        this.#onDrop(event).catch((err) => console.error(`${ID} | Ablegen fehlgeschlagen`, err));
-      }, true);
-    }
+    // Ziehen & Ablegen läuft über einen globalen Abfänger (siehe installDropCatcher),
+    // damit andere Module das Ablegen nicht vorher schlucken können.
   }
 
-  async #onDrop(event) {
+  /** Wird vom globalen Abfänger aufgerufen. Daten müssen sofort (synchron) gelesen werden. */
+  handleDrop(event) {
     const data = readDragData(event);
-    console.debug(`${ID} | Abgelegt:`, data);
+    const files = [...(event.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("audio/") || AUDIO_EXT.test(f.name));
     const soundId = event.target.closest?.("[data-sound-id]")?.dataset.soundId ?? null;
+    console.log(`${ID} | Abgelegt:`, data, files.length ? `${files.length} Datei(en)` : "");
+    this.#onDrop(data, files, soundId).catch((err) => {
+      console.error(`${ID} | Ablegen fehlgeschlagen`, err);
+      ui.notifications.error(t("Notify.DropFailed"));
+    });
+  }
+
+  async #onDrop(data, files, soundId) {
     const actor = this.tokenDoc.actor;
 
-    // 1) Gegenstand, Waffe, Zauber oder Aktivität (z. B. Waffenangriff)
+    // 1) Dateien vom eigenen Computer → hochladen
+    if (files.length) {
+      if (!canAddSounds(this.tokenDoc)) return ui.notifications.warn(t("Notify.NoAddPermission"));
+      return uploadAndAdd(this.tokenDoc, files);
+    }
+
+    // 2) Gegenstand, Waffe, Zauber oder Aktivität (z. B. Waffenangriff)
     const item = await itemFromDrop(data, actor);
     if (item) {
       if (!actor || !sameActor(item.parent, actor)) return ui.notifications.warn(t("Notify.ItemWrongActor"));
       const own = actor.items.get(item.id) ?? item;
-      if (!canConfigureItem(own)) return ui.notifications.warn(t("Notify.NoPermission"));
+      if (!canConfigureItem(own)) return ui.notifications.warn(t("Notify.NoLinkPermission"));
       if (soundId) return linkItem(own, soundId);
+      if (getLibrary(this.tokenDoc).length) return ui.notifications.info(t("Notify.DropOnSound"));
       return ItemSoundConfig.open(own);
     }
 
-    // 2) Sounds: Playlist, Playlist-Sound oder Audiodatei (z. B. aus dem Dateibrowser)
-    if (!game.user.isGM) return ui.notifications.warn(t("Notify.ItemWrongActor"));
+    // 3) Sounds: Playlist, Playlist-Sound oder Audiodatei aus dem Dateibrowser
     const sounds = await soundsFromDrop(data);
     if (!sounds.length) return ui.notifications.warn(t("Notify.DropWrongType"));
+    if (!canAddSounds(this.tokenDoc)) return ui.notifications.warn(t("Notify.NoAddPermission"));
     await addEntries(this.tokenDoc, sounds);
   }
 
@@ -1068,17 +1209,19 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
   static async #onPickFile(event, target) {
     const id = SoundboardApp.#soundId(target);
     const entry = getLibrary(this.tokenDoc).find((s) => s.id === id);
-    const FP = foundry.applications.apps?.FilePicker?.implementation ?? globalThis.FilePicker;
-    new FP({
-      type: "audio",
-      current: entry?.src ?? "",
-      callback: (path) => {
-        const patch = { src: path };
-        // Name mitziehen, solange er noch der automatische Dateiname war.
-        if (!entry?.name || entry.name === nameFromPath(entry.src)) patch.name = nameFromPath(path);
-        updateEntry(this.tokenDoc, id, patch);
-      }
-    }).render(true);
+    if (!entry || !canEditEntry(this.tokenDoc, entry)) return;
+    const apply = (path) => {
+      const patch = { src: path };
+      // Name mitziehen, solange er noch der automatische Dateiname war.
+      if (!entry.name || entry.name === nameFromPath(entry.src)) patch.name = nameFromPath(path);
+      updateEntry(this.tokenDoc, id, patch);
+    };
+    if (game.user.isGM || game.user.can("FILES_BROWSE")) return openAudioPicker(apply, entry.src);
+    if (!game.user.can("FILES_UPLOAD")) return ui.notifications.warn(t("Add.NoUploadRight"));
+    const [file] = await chooseLocalFiles({ multiple: false });
+    if (!file) return;
+    const path = await uploadAudio(this.tokenDoc, file);
+    if (path) apply(path);
   }
 
   static async #onDelete(event, target) {
@@ -1093,11 +1236,34 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
   }
 
   static async #onAdd() {
-    const FP = foundry.applications.apps?.FilePicker?.implementation ?? globalThis.FilePicker;
-    new FP({
-      type: "audio",
-      callback: (path) => addEntries(this.tokenDoc, [{ name: nameFromPath(path), src: path }])
-    }).render(true);
+    if (!canAddSounds(this.tokenDoc)) return ui.notifications.warn(t("Notify.NoAddPermission"));
+    const canUpload = game.user.isGM || game.user.can("FILES_UPLOAD");
+    const canBrowse = game.user.isGM || game.user.can("FILES_BROWSE");
+
+    // Spielleiter mit Dateibrowser: direkt den Dateibrowser öffnen (der kann auch hochladen).
+    if (game.user.isGM) return openAudioPicker((path) => addEntries(this.tokenDoc, [{ name: nameFromPath(path), src: path }]));
+
+    const DialogV2 = foundry.applications.api.DialogV2;
+    const buttons = [{
+      action: "upload",
+      label: t("Add.Upload"),
+      icon: "fa-solid fa-upload",
+      default: true,
+      callback: () => "upload"
+    }];
+    if (canBrowse) buttons.push({ action: "browse", label: t("Add.Browse"), icon: "fa-solid fa-folder-open", callback: () => "browse" });
+    const choice = await DialogV2.wait({
+      window: { title: t("Board.Add"), icon: "fa-solid fa-plus" },
+      content: `<p>${esc(t("Add.Hint"))}</p>${canUpload ? "" : `<p class="ats-warn">${esc(t("Add.NoUploadRight"))}</p>`}`,
+      buttons,
+      rejectClose: false
+    });
+    if (choice === "browse") return openAudioPicker((path) => addEntries(this.tokenDoc, [{ name: nameFromPath(path), src: path }]));
+    if (choice === "upload") {
+      if (!canUpload) return ui.notifications.warn(t("Add.NoUploadRight"));
+      const files = await chooseLocalFiles();
+      if (files.length) await uploadAndAdd(this.tokenDoc, files);
+    }
   }
 
   static async #onStopAll() {
@@ -1658,7 +1824,7 @@ function hasBoardContent(tokenDoc) {
   if (visibleSounds(tokenDoc).length) return true;
   const actor = tokenDoc.actor;
   if (!actor?.isOwner) return false;
-  if (setting("playersItemSounds")) return true;
+  if (setting("playersItemSounds") || setting("playersOwnSounds")) return true;
   return actor.items.some((item) => getItemSound(item)?.enabled);
 }
 
@@ -1781,6 +1947,18 @@ Hooks.once("init", () => {
     onChange: (on) => (on ? Notes.wake() : Notes.clear())
   });
 
+  game.settings.register(ID, "playersOwnSounds", {
+    name: "ATS.Settings.PlayersOwnSounds.Name",
+    hint: "ATS.Settings.PlayersOwnSounds.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+    onChange: () => {
+      for (const app of foundry.applications.instances?.values() ?? []) if (app instanceof SoundboardApp) app.render();
+    }
+  });
+
   game.settings.register(ID, "playersItemSounds", {
     name: "ATS.Settings.PlayersItemSounds.Name",
     hint: "ATS.Settings.PlayersItemSounds.Hint",
@@ -1792,6 +1970,7 @@ Hooks.once("init", () => {
 });
 
 Hooks.once("ready", () => {
+  installDropCatcher();
   setInterval(janitor, 10000);
   setInterval(() => Engine.watchdog(), 3000);
   const mod = game.modules.get(ID);

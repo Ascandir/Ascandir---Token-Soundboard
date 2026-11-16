@@ -639,3 +639,8 @@ input.ats-name {
   font-size: 0.85em;
   opacity: 0.8;
 }
+
+.ats-warn {
+  color: #c0503f;
+  font-size: 0.9em;
+}
