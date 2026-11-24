@@ -134,6 +134,10 @@
       "NoUploadRight": "Dir fehlt in Foundry das Recht „Dateien hochladen“. Der Spielleiter kann es unter Spieleinstellungen → Berechtigungen für Spieler freigeben.",
       "TooLarge": "{name} ist zu groß (höchstens {max} MB).",
       "UploadFailed": "{name} konnte nicht hochgeladen werden."
+    },
+    "Actor": {
+      "NoToken": "Kein Token dieses Charakters auf der Szene – zum Abspielen den Token auf die Szene stellen.",
+      "NoTokenHint": "Kein Token dieses Charakters auf der aktuellen Szene. Du kannst Sounds anlegen, einstellen und anheften. Abspielen geht, sobald der Token auf der Szene steht."
     }
   }
 }

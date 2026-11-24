@@ -644,3 +644,13 @@ input.ats-name {
   color: #c0503f;
   font-size: 0.9em;
 }
+
+/* Hinweis im Charakter-Soundboard, wenn kein Token auf der Szene steht */
+.ats-actor-note {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(201, 162, 74, 0.6);
+  border-radius: 6px;
+  background: rgba(201, 162, 74, 0.12);
+  font-size: 0.85em;
+}

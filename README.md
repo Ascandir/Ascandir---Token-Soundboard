@@ -27,6 +27,12 @@ Das Noten-Symbol erscheint im Rechtsklick-Menü des eigenen Tokens (oben mittig)
 - **Wiederholen (Loop):** an oder aus
 - **Dauer:** ohne Limit oder 15 Sekunden bis 60 Minuten
 
+## Soundboard im Charakterbogen
+
+Das Soundboard gibt es zusätzlich zum Token-HUD auch im **Charakterbogen**: oben in der Titelleiste auf das **Noten-Symbol** klicken. Die Sounds hängen am Charakter selbst und sind deshalb in jeder Szene dabei.
+
+Steht kein Token des Charakters auf der aktuellen Szene, kannst du Sounds trotzdem anlegen, einstellen und anheften, nur abspielen geht erst mit Token auf der Szene. Bei NSC-Vorlagen (unverknüpfte Token) gelten die Sounds aus dem Bogen für alle neu platzierten Token dieses NSC.
+
 ## Sounds an Waffen, Zauber und Aktionen anheften
 
 Sounds stellst du im Soundboard ein (Lautstärke, Loop, Dauer) und heftest sie dann an Waffen, Zauber oder Aktionen. Sobald die Waffe, der Zauber oder die Aktion benutzt wird, spielt der Sound automatisch am Token, bei Waffen also beim Waffenangriff.

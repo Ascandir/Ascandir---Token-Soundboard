@@ -134,6 +134,10 @@
       "NoUploadRight": "You lack the Foundry permission “Upload new files”. The GM can grant it to players under Game Settings → Permissions.",
       "TooLarge": "{name} is too large (at most {max} MB).",
       "UploadFailed": "{name} could not be uploaded."
+    },
+    "Actor": {
+      "NoToken": "No token of this character on the scene – place the token on the scene to play sounds.",
+      "NoTokenHint": "No token of this character on the current scene. You can add, set up and attach sounds. Playing works once the token is on the scene."
     }
   }
 }

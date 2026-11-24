@@ -51,6 +51,34 @@ function nameFromPath(path) {
   return name.replace(/[_-]+/g, " ").trim() || "Sound";
 }
 
+/**
+ * Platzhalter, wenn das Soundboard aus dem Charakterbogen geöffnet wird und kein
+ * passender Token auf der Szene steht: Sounds lassen sich bearbeiten, aber nicht abspielen.
+ */
+function actorTarget(actor) {
+  return {
+    isActorTarget: true,
+    id: null,
+    parent: null,
+    actor,
+    get name() { return actor.name; },
+    get texture() { return { src: actor.prototypeToken?.texture?.src || actor.img }; },
+    get isOwner() { return actor.isOwner; },
+    getFlag: () => undefined,
+    setFlag: async () => {}
+  };
+}
+
+/** Token dieses Charakters auf der aktuellen Szene (ausgewählt bevorzugt). */
+function sceneTokenFor(actor) {
+  if (!actor || !canvas?.ready) return null;
+  if (actor.isToken && actor.token) return actor.token.parent === canvas.scene ? actor.token : null;
+  const controlled = canvas.tokens?.controlled?.find((tk) => tk.actor === actor);
+  if (controlled) return controlled.document;
+  if (actor.prototypeToken?.actorLink === false) return null;
+  return (actor.getActiveTokens?.(true, true) ?? []).find((td) => td.parent === canvas.scene) ?? null;
+}
+
 /** Wo die Sound-Liste dieses Tokens liegt. */
 function libDoc(tokenDoc) {
   return tokenDoc?.actor ?? tokenDoc;
@@ -168,6 +196,10 @@ async function playSound(tokenDoc, soundId) {
  * @param {string} key  Kennung – ein erneuter Start mit derselben Kennung ersetzt den alten.
  */
 async function startPlay(tokenDoc, entry, key) {
+  if (!tokenDoc || tokenDoc.isActorTarget) {
+    ui.notifications.warn(t("Actor.NoToken"));
+    return;
+  }
   const length = await probeLength(entry.src);
   if (!length) {
     // Datei fehlt oder ist kaputt – lieber Bescheid geben als still nichts tun.
@@ -1031,20 +1063,45 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
   /** Öffnet das Soundboard für einen Token (oder holt es nach vorne). */
   static open(tokenDoc) {
     const id = `ats-soundboard-${tokenDoc.parent?.id ?? "x"}-${tokenDoc.id}`;
+    return SoundboardApp.#show(id, { tokenDoc });
+  }
+
+  /** Öffnet das Soundboard aus dem Charakterbogen – auch ohne Token auf der Szene. */
+  static openForActor(actor) {
+    // Bogen eines unverknüpften Tokens → direkt dessen Token-Soundboard
+    if (actor.isToken && actor.token) return SoundboardApp.open(actor.token);
+    const id = `ats-soundboard-actor-${actor.id}`;
+    return SoundboardApp.#show(id, { actor });
+  }
+
+  static #show(id, options) {
     const existing = foundry.applications.instances?.get(id);
     if (existing) {
       existing.render({ force: true });
       existing.bringToFront?.();
       return existing;
     }
-    const app = new SoundboardApp({ id, tokenDoc });
+    const app = new SoundboardApp({ id, ...options });
     app.render({ force: true });
     return app;
   }
 
   constructor(options = {}) {
     super(options);
-    this.tokenDoc = options.tokenDoc;
+    this._tokenDoc = options.tokenDoc ?? null;
+    this._actor = options.actor ?? null;
+    this._stub = null;
+  }
+
+  /** Charakter-Modus: Token auf der Szene, sonst Platzhalter (bearbeiten ja, abspielen nein). */
+  get tokenDoc() {
+    if (this._tokenDoc) return this._tokenDoc;
+    if (!this._actor) return null;
+    return sceneTokenFor(this._actor) ?? (this._stub ??= actorTarget(this._actor));
+  }
+
+  get isActorMode() {
+    return !!this._actor;
   }
 
   get title() {
@@ -1053,6 +1110,7 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
 
   /** Gehört diese Änderung zu meinem Token? */
   concerns(doc) {
+    if (this._actor && (doc === this._actor || doc?.actor === this._actor)) return true;
     if (!this.tokenDoc) return false;
     return doc === this.tokenDoc || doc === libDoc(this.tokenDoc) || doc?.id === libDoc(this.tokenDoc)?.id;
   }
@@ -1106,7 +1164,7 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
 
       return `
         <li class="ats-row${isPlaying ? " playing" : ""}" data-sound-id="${esc(s.id)}">
-          <button type="button" class="ats-play" data-action="toggle" data-tooltip="${esc(t(isPlaying ? "Board.Stop" : "Board.Play"))}">
+          <button type="button" class="ats-play" data-action="toggle"${td.isActorTarget ? " disabled" : ""} data-tooltip="${esc(t(td.isActorTarget ? "Actor.NoToken" : isPlaying ? "Board.Stop" : "Board.Play"))}">
             <i class="fa-solid ${isPlaying ? "fa-stop" : "fa-play"}"></i>
           </button>
           <div class="ats-main">
@@ -1148,7 +1206,7 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
       ].filter(Boolean).join(" · ");
       return `
         <li class="ats-item-row${isPlaying ? " playing" : ""}${cfg.enabled ? "" : " disabled"}" data-item-id="${esc(item.id)}">
-          <button type="button" class="ats-play small" data-action="toggleItem"${playable || isPlaying ? "" : " disabled"} data-tooltip="${esc(t(isPlaying ? "Board.Stop" : "Board.Play"))}">
+          <button type="button" class="ats-play small" data-action="toggleItem"${(playable || isPlaying) && !td.isActorTarget ? "" : " disabled"} data-tooltip="${esc(t(isPlaying ? "Board.Stop" : "Board.Play"))}">
             <i class="fa-solid ${isPlaying ? "fa-stop" : "fa-play"}"></i>
           </button>
           <img src="${esc(item.img)}" alt="">
@@ -1182,6 +1240,7 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
         <img src="${esc(td.texture?.src ?? "")}" alt="">
         <p>${esc(t(isGM ? "Board.HintGM" : canAddSounds(td) ? "Board.HintPlayerOwn" : "Board.HintPlayer"))}</p>
       </header>
+      ${td.isActorTarget ? `<p class="ats-actor-note"><i class="fa-solid fa-circle-info"></i> ${esc(t("Actor.NoTokenHint"))}</p>` : ""}
       <div class="ats-scroll">
         ${rows ? `<ol class="ats-list">${rows}</ol>` : empty}
         ${itemSection}
@@ -1878,6 +1937,30 @@ function onRenderItemSheet(app) {
   else header.append(btn);
 }
 
+/** Noten-Knopf in der Titelleiste des Charakterbogens (zusätzlich zum Token-HUD). */
+function onRenderActorSheet(app) {
+  const actor = app?.document ?? app?.actor;
+  if (actor?.documentName !== "Actor") return;
+  if (!hasBoardContent(actorTarget(actor))) return;
+  const header = app.window?.header ?? app.element?.querySelector?.(".window-header");
+  if (!header || header.querySelector(".ats-actor-header")) return;
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "header-control icon fa-solid fa-music ats-actor-header";
+  btn.dataset.tooltip = t("HUD.Tooltip");
+  btn.setAttribute("aria-label", t("HUD.Tooltip"));
+  btn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    SoundboardApp.openForActor(actor);
+  });
+
+  const anchor = header.querySelector("[data-action='toggleControls'], [data-action='close']");
+  if (anchor) anchor.before(btn);
+  else header.append(btn);
+}
+
 function refreshItemHeaders(item) {
   for (const app of foundry.applications.instances?.values() ?? []) {
     if (app.document !== item) continue;
@@ -1894,7 +1977,7 @@ function rerenderBoards(doc) {
 
 function closeBoardsFor(tokenDoc) {
   for (const app of foundry.applications.instances?.values() ?? []) {
-    if (app instanceof SoundboardApp && app.tokenDoc === tokenDoc) app.close();
+    if (app instanceof SoundboardApp && app._tokenDoc === tokenDoc) app.close();
   }
 }
 
@@ -2079,6 +2162,19 @@ Hooks.on("dnd5e.postUseActivity", onUseActivity);
 Hooks.on("createChatMessage", onCreateChatMessage);
 Hooks.on("dnd5e.postRollAttack", onRollAttack);
 Hooks.on("renderItemSheet5e", onRenderItemSheet);
+Hooks.on("renderActorSheetV2", onRenderActorSheet);
+Hooks.on("renderBaseActorSheet", onRenderActorSheet);
+// Szenenwechsel: Charakter-Soundboards neu zeichnen (anderer Token auf der Szene)
+Hooks.on("canvasReady", () => {
+  for (const app of foundry.applications.instances?.values() ?? []) {
+    if (app instanceof SoundboardApp && app.isActorMode) app.render();
+  }
+});
+Hooks.on("createToken", (doc) => {
+  for (const app of foundry.applications.instances?.values() ?? []) {
+    if (app instanceof SoundboardApp && app.isActorMode && app._actor === doc.actor) app.render();
+  }
+});
 Hooks.on("renderItemSheetV2", onRenderItemSheet);
 
 function onItemChanged(item) {
@@ -2116,6 +2212,9 @@ Hooks.on("updateActor", (actor) => {
 
 Hooks.on("deleteToken", (doc) => {
   closeBoardsFor(doc);
+  for (const app of foundry.applications.instances?.values() ?? []) {
+    if (app instanceof SoundboardApp && app.isActorMode) app.render();
+  }
   if (doc.parent === canvas.scene) Engine.sync();
 });
 
