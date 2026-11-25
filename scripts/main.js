@@ -35,6 +35,12 @@ const t = (key, data) => (data ? game.i18n.format(`ATS.${key}`, data) : game.i18
 const setting = (key) => game.settings.get(ID, key);
 const now = () => game.time?.serverTime ?? Date.now();
 
+/** 2.5 → "2,5" (deutsch) bzw. "2.5" */
+function fmtSeconds(n) {
+  const str = String(Math.round(n * 10) / 10);
+  return game.i18n.lang === "de" ? str.replace(".", ",") : str;
+}
+
 function esc(str) {
   return String(str ?? "")
     .replace(/&/g, "&amp;")
@@ -245,8 +251,15 @@ function getItemSound(item) {
     src: String(raw.src ?? ""),
     level: LEVELS.includes(raw.level) ? raw.level : "medium",
     loop: !!raw.loop,
-    duration: Math.max(0, Number(raw.duration) || 0)
+    duration: Math.max(0, Number(raw.duration) || 0),
+    clip: clipSeconds(raw.clip)
   };
+}
+
+/** "Nur X Sekunden abspielen": 0 = ganz bzw. wie eingestellt, sonst 0,1 bis 600 Sekunden. */
+function clipSeconds(value) {
+  const n = Math.round((Number(String(value ?? "").replace(",", ".")) || 0) * 10) / 10;
+  return n > 0 ? Math.min(600, Math.max(0.1, n)) : 0;
 }
 
 /** Darf dieser Benutzer den Sound eines Gegenstands einstellen? */
@@ -269,13 +282,18 @@ function boardEntryFor(item, cfg = getItemSound(item)) {
  */
 function resolveItemSound(item, cfg = getItemSound(item)) {
   if (!cfg?.enabled) return null;
+  let result = null;
   if (cfg.source === "board") {
     const entry = boardEntryFor(item, cfg);
     if (!entry?.src) return null;
-    return { name: entry.name, src: entry.src, level: entry.level, loop: entry.loop, duration: entry.duration };
+    result = { name: entry.name, src: entry.src, level: entry.level, loop: entry.loop, duration: entry.duration };
+  } else {
+    if (!cfg.src) return null;
+    result = { name: item.name, src: cfg.src, level: cfg.level, loop: cfg.loop, duration: cfg.duration };
   }
-  if (!cfg.src) return null;
-  return { name: item.name, src: cfg.src, level: cfg.level, loop: cfg.loop, duration: cfg.duration };
+  // "Nur X Sekunden": egal wie lang die Datei ist – nach X Sekunden ist Schluss.
+  if (cfg.clip > 0) result.duration = cfg.clip;
+  return result;
 }
 
 /** Alle Gegenstände des Akteurs, die an diesen Soundboard-Sound geheftet sind. */
@@ -295,7 +313,7 @@ async function setLinks(actor, soundId, itemIds) {
     const cfg = getItemSound(item);
     const linkedHere = cfg?.source === "board" && cfg.boardId === soundId;
     if (wanted.has(item.id) && !(linkedHere && cfg.enabled)) {
-      updates.push({ _id: item.id, [`flags.${ID}.itemSound`]: { enabled: true, source: "board", boardId: soundId, src: "", level: "medium", loop: false, duration: 0 } });
+      updates.push({ _id: item.id, [`flags.${ID}.itemSound`]: { enabled: true, source: "board", boardId: soundId, src: "", level: "medium", loop: false, duration: 0, clip: cfg?.clip ?? 0 } });
     } else if (!wanted.has(item.id) && linkedHere) {
       updates.push({ _id: item.id, [`flags.${ID}.-=itemSound`]: null });
     }
@@ -305,7 +323,8 @@ async function setLinks(actor, soundId, itemIds) {
 
 async function linkItem(item, soundId) {
   if (!canConfigureItem(item)) return ui.notifications.warn(t("Notify.NoPermission"));
-  await item.setFlag(ID, "itemSound", { enabled: true, source: "board", boardId: soundId, src: "", level: "medium", loop: false, duration: 0 });
+  const clip = getItemSound(item)?.clip ?? 0;
+  await item.setFlag(ID, "itemSound", { enabled: true, source: "board", boardId: soundId, src: "", level: "medium", loop: false, duration: 0, clip });
   ui.notifications.info(t("Link.Linked", { item: item.name }));
 }
 
@@ -563,7 +582,7 @@ const Engine = {
       Notes.wake();
 
       rec.current = this.targetVolume(rec);
-      sound.fade(rec.current, { duration: FADE_MS });
+      sound.fade(rec.current, { duration: fadeFor(play) });
 
       this.armTimer(key, rec);
       if (typeof sound.addEventListener === "function") {
@@ -589,8 +608,9 @@ const Engine = {
     if (!sound) return;
     try {
       if (sound.playing) {
-        sound.fade(0, { duration: FADE_MS });
-        setTimeout(() => sound.stop(), FADE_MS + 50);
+        const fade = fadeFor(rec.play);
+        sound.fade(0, { duration: fade });
+        setTimeout(() => sound.stop(), fade + 50);
       } else sound.stop();
     } catch (err) {
       /* bereits gestoppt */
@@ -666,6 +686,12 @@ const Engine = {
     return base * best;
   }
 };
+
+/** Ein-/Ausblendzeit: kurze Sounds (unter 5 s) fast sofort, damit nichts verschluckt wird. */
+function fadeFor(play) {
+  if (play?.ends && play.start && play.ends - play.start < 5000) return 40;
+  return FADE_MS;
+}
 
 /** Mittelpunkt – nimmt die gerade animierte Position, damit es beim Laufen flüssig klingt. */
 function tokenCenter(token) {
@@ -1128,12 +1154,17 @@ class SoundboardApp extends foundry.applications.api.ApplicationV2 {
     const rows = sounds.map((s) => {
       const isPlaying = playing.has(s.id);
       const links = linkedItems(actor, s.id);
-      const chips = links.map((item) => `
-        <span class="ats-chip" data-item-id="${esc(item.id)}" data-tooltip="${esc(item.name)}">
+      const chips = links.map((item) => {
+        const clip = getItemSound(item)?.clip ?? 0;
+        const tip = `${item.name}${clip ? ` – ${t("Clip.Badge", { s: fmtSeconds(clip) })}` : ""}${canConfig ? ` · ${t("Clip.ChipHint")}` : ""}`;
+        return `
+        <span class="ats-chip" data-item-id="${esc(item.id)}" data-tooltip="${esc(tip)}">
           <img src="${esc(item.img)}" alt="">
-          <span>${esc(item.name)}</span>
+          ${canConfig ? `<button type="button" class="ats-chip-name" data-action="configItem">${esc(item.name)}</button>` : `<span>${esc(item.name)}</span>`}
+          ${clip ? `<span class="ats-chip-clip"><i class="fa-solid fa-stopwatch"></i> ${esc(fmtSeconds(clip))} s</span>` : ""}
           ${canConfig ? `<button type="button" data-action="unlinkItem" data-tooltip="${esc(t("Link.Unlink"))}"><i class="fa-solid fa-xmark"></i></button>` : ""}
-        </span>`).join("");
+        </span>`;
+      }).join("");
       const linkBar = canConfig || links.length
         ? `<div class="ats-links">
              <span class="ats-links-label"><i class="fa-solid fa-link"></i> ${esc(t("Link.Label"))}</span>
@@ -1588,7 +1619,8 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
       src: "",
       level: "medium",
       loop: false,
-      duration: 0
+      duration: 0,
+      clip: 0
     };
     this.preview = null;
   }
@@ -1614,6 +1646,7 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
     s.src = (f.elements.src?.value ?? s.src).trim();
     s.loop = !!f.elements.loop?.checked;
     s.duration = Math.max(0, Number(f.elements.duration?.value) || 0);
+    s.clip = f.elements.clipOn?.checked ? clipSeconds(f.elements.clip?.value) : 0;
   }
 
   async _renderHTML() {
@@ -1674,6 +1707,17 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
         </div>
       </fieldset>
 
+      <fieldset class="ats-clip">
+        <legend><i class="fa-solid fa-stopwatch"></i> ${esc(t("Clip.Legend"))}</legend>
+        <label class="ats-check">
+          <input type="checkbox" name="clipOn"${s.clip > 0 ? " checked" : ""}>
+          ${esc(t("Clip.Only"))}
+          <input type="number" name="clip" min="0.1" max="600" step="0.1" value="${s.clip > 0 ? s.clip : 3}" class="ats-clip-input"${s.clip > 0 ? "" : " disabled"}>
+          ${esc(t("Clip.Seconds"))}
+        </label>
+        <p class="ats-clip-hint">${esc(t("Clip.Hint"))}</p>
+      </fieldset>
+
       <footer class="ats-footer">
         <button type="button" data-action="preview"><i class="fa-solid ${this.preview ? "fa-stop" : "fa-headphones"}"></i> ${esc(t(this.preview ? "Item.PreviewStop" : "Item.Preview"))}</button>
         ${getItemSound(this.item) ? `<button type="button" data-action="remove"><i class="fa-solid fa-trash"></i> ${esc(t("Item.Remove"))}</button>` : ""}
@@ -1709,6 +1753,13 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
       sync();
     });
     for (const r of el.querySelectorAll("[name=source]")) r.addEventListener("change", sync);
+    // Sekunden-Feld nur aktiv, wenn der Haken gesetzt ist
+    const clipOn = el.querySelector("[name=clipOn]");
+    const clipInput = el.querySelector("[name=clip]");
+    clipOn?.addEventListener("change", () => {
+      if (clipInput) clipInput.disabled = !clipOn.checked;
+      if (clipOn.checked) clipInput?.focus();
+    });
   }
 
   async close(options) {
@@ -1745,12 +1796,21 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
         : this.cfgState.level;
       await sound.play({ volume: LEVEL_GAIN[lvl] ?? 0.75 });
       this.preview = sound;
-      sound.addEventListener?.("end", () => {
+      const done = () => {
         if (this.preview === sound) {
           this.preview = null;
           if (this.rendered) this.render();
         }
-      }, { once: true });
+      };
+      sound.addEventListener?.("end", done, { once: true });
+      // Probehören hält sich an "Nur X Sekunden"
+      if (this.cfgState.clip > 0) {
+        setTimeout(() => {
+          if (this.preview !== sound) return;
+          try { sound.stop(); } catch (e) { /* egal */ }
+          done();
+        }, this.cfgState.clip * 1000);
+      }
     } catch (err) {
       ui.notifications.error(t("Notify.LoadFailed", { src }));
     }
@@ -1794,7 +1854,8 @@ class ItemSoundConfig extends foundry.applications.api.ApplicationV2 {
       src: s.src,
       level: s.level,
       loop: s.loop,
-      duration: s.duration
+      duration: s.duration,
+      clip: s.clip
     });
   }
 }

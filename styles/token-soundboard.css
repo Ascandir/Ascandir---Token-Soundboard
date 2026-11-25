@@ -654,3 +654,42 @@ input.ats-name {
   background: rgba(201, 162, 74, 0.12);
   font-size: 0.85em;
 }
+
+/* ---------- Nur X Sekunden abspielen ---------- */
+.ats-item-config .ats-clip .ats-check {
+  flex-wrap: wrap;
+}
+
+.ats-item-config .ats-clip-input {
+  width: 70px;
+  flex: 0 0 auto;
+  height: 26px;
+  text-align: right;
+}
+
+.ats-item-config .ats-clip-hint {
+  margin: 0;
+  font-size: 0.8em;
+  opacity: 0.75;
+}
+
+.ats-chip-name {
+  all: unset;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ats-chip-name:hover {
+  text-decoration: underline;
+}
+
+.ats-chip-clip {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(201, 162, 74, 0.35);
+  font-size: 0.85em;
+  white-space: nowrap;
+}

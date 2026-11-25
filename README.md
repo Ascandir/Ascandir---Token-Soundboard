@@ -41,6 +41,8 @@ Sounds stellst du im Soundboard ein (Lautstärke, Loop, Dauer) und heftest sie d
 - **Auswählen:** Beim Sound unter „Angeheftet an“ auf **+** klicken und die gewünschten Einträge anhaken.
 - **Lösen:** Auf das **×** am Eintrag klicken.
 
+**Nur X Sekunden abspielen:** Pro Waffe, Zauber oder Aktion lässt sich festlegen, dass der Sound beim Benutzen nur eine bestimmte Zeit spielt (z. B. 2,5 Sekunden), egal wie lang die Datei ist. Dazu auf den Namen am Schild unter „Angeheftet an“ klicken (oder im Bogen auf das Noten-Symbol) und „Nur … Sekunden abspielen“ setzen. Die Sekunden werden am Schild angezeigt.
+
 Ein Sound kann an beliebig viele Einträge geheftet werden. Änderst du Lautstärke, Loop oder Dauer im Soundboard, gilt das automatisch für alle angehefteten Einträge.
 
 Alternativ lässt sich im Bogen einer Waffe oder eines Zaubers über das **Noten-Symbol** in der Titelleiste auch eine eigene Audiodatei hinterlegen.

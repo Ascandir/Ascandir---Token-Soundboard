@@ -138,6 +138,14 @@
     "Actor": {
       "NoToken": "Kein Token dieses Charakters auf der Szene – zum Abspielen den Token auf die Szene stellen.",
       "NoTokenHint": "Kein Token dieses Charakters auf der aktuellen Szene. Du kannst Sounds anlegen, einstellen und anheften. Abspielen geht, sobald der Token auf der Szene steht."
+    },
+    "Clip": {
+      "Legend": "Abspieldauer beim Benutzen",
+      "Only": "Nur",
+      "Seconds": "Sekunden abspielen",
+      "Hint": "Egal wie lang die Datei ist: Beim Benutzen spielt der Sound nur so lange und hört dann auf. Gut für kurze Effekte aus langen Dateien, z. B. 2 Sekunden Schwerthieb.",
+      "Badge": "nur {s} Sekunden",
+      "ChipHint": "Klicken zum Einstellen (z. B. nur X Sekunden)"
     }
   }
 }

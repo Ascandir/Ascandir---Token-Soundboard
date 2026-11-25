@@ -138,6 +138,14 @@
     "Actor": {
       "NoToken": "No token of this character on the scene – place the token on the scene to play sounds.",
       "NoTokenHint": "No token of this character on the current scene. You can add, set up and attach sounds. Playing works once the token is on the scene."
+    },
+    "Clip": {
+      "Legend": "Playback length on use",
+      "Only": "Play only",
+      "Seconds": "seconds",
+      "Hint": "No matter how long the file is, on use the sound only plays this long and then stops. Handy for short effects from long files, e.g. a 2-second sword swing.",
+      "Badge": "only {s} seconds",
+      "ChipHint": "Click to set up (e.g. only X seconds)"
     }
   }
 }
